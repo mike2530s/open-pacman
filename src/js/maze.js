@@ -1,7 +1,7 @@
 // maze.js
 // Laberinto 28x31 fiel a la geometria del nivel 1 de Pac-Man.
 // Se escribe como 31 strings de 28 chars (legible) y se parsea a numeros.
-//   '#' pared(1) · '.' dot(2) · ' ' vacio transitable(0) · '-' puerta pen(3)
+//   '#' pared(1) · '.' dot(2) · ' ' vacio transitable(0) · '-' puerta pen(3) · 'o' power pellet(4)
 // Coordenadas: celda (x,y), origen arriba-izquierda. x in [0,27], y in [0,30].
 // Simetrico respecto al eje vertical central (entre cols 13 y 14).
 
@@ -9,27 +9,27 @@ const MAZE_STR = [
   '############################', // 0  borde
   '#............##............#', // 1
   '#.####.#####.##.#####.####.#', // 2
-  '#.####.#####.##.#####.####.#', // 3
+  '#o####.#####.##.#####.####o#', // 3  power pellets (1,3) y (26,3)
   '#.####.#####.##.#####.####.#', // 4
   '#..........................#', // 5
   '#.####.##.########.##.####.#', // 6
   '#.####.##.########.##.####.#', // 7
   '#......##....##....##......#', // 8
-  '######.#####.##.#####.######', // 9
-  '######.#####.##.#####.######', // 10
-  '######.##..........##.######', // 11
-  '######.##.###--###.##.######', // 12  puerta pen cols 13-14
-  '######.##.#      #.##.######', // 13  interior pen
-  '          #      #          ', // 14  tunel (extremos abiertos) + pen
-  '######.##.#      #.##.######', // 15  interior pen
-  '######.##.########.##.######', // 16  fondo pen
-  '######.##..........##.######', // 17
-  '######.#####.##.#####.######', // 18
-  '######.#####.##.#####.######', // 19
+  '######.##### ## #####.######', // 9
+  '     #.##### ## #####.#     ', // 10
+  '     #.##          ##.#     ', // 11
+  '     #.## ###--### ##.#     ', // 12  puerta pen cols 13-14
+  '######.## #      # ##.######', // 13  interior pen
+  '      .   #      #   .      ', // 14  tunel (extremos abiertos) + pen
+  '######.## #      # ##.######', // 15  interior pen
+  '     #.## ######## ##.#     ', // 16  fondo pen
+  '     #.##          ##.#     ', // 17
+  '     #.## ######## ##.#     ', // 18
+  '######.## ######## ##.######', // 19
   '#............##............#', // 20
   '#.####.#####.##.#####.####.#', // 21
   '#.####.#####.##.#####.####.#', // 22
-  '#...##................##...#', // 23  fila inicio Pacman (13,23)
+  '#o..##....... ........##..o#', // 23  inicio Pacman (13,23), pellets (1,23),(26,23)
   '###.##.##.########.##.##.###', // 24
   '###.##.##.########.##.##.###', // 25
   '#......##....##....##......#', // 26
@@ -39,10 +39,18 @@ const MAZE_STR = [
   '############################', // 30  borde
 ];
 
+// Validacion estricta: todas las filas deben medir 28.
+for ( const row of MAZE_STR ) {
+  if ( row.length !== 28 ) {
+    throw new Error( 'MAZE_STR: fila de largo ' + row.length + ' (esperado 28): ' + row );
+  }
+}
+
 function parseTile( ch ) {
   if ( ch === '#' ) return 1;
   if ( ch === '.' ) return 2;
   if ( ch === '-' ) return 3;
+  if ( ch === 'o' ) return 4; // power pellet
   return 0; // espacio = vacio transitable
 }
 
@@ -52,13 +60,22 @@ const MAZE = MAZE_STR.map( ( row ) => row.split( '' ).map( parseTile ) );
 const TUNNEL_ROW = 14;
 const PACMAN_START = { x: 13, y: 23 };
 const GHOST_STARTS = [
-  { x: 13, y: 11, kind: 'blinky' },  // Blinky: top area
-  { x: 14, y: 11, kind: 'pinky' },   // Pinky: top area
-  { x: 13, y: 14, kind: 'inky' },    // Inky: pen area
-  { x: 14, y: 14, kind: 'clyde' },   // Clyde: pen area
+  { x: 13, y: 11, kind: 'blinky' },  // Blinky: fuera del pen
+  { x: 13, y: 14, kind: 'pinky' },   // Pinky: pen
+  { x: 12, y: 14, kind: 'inky' },    // Inky: pen
+  { x: 14, y: 14, kind: 'clyde' },   // Clyde: pen
+];
+
+// Posiciones de power pellets (para referencia en render/game)
+const POWER_PELLET_POSITIONS = [
+  { x: 1, y: 3 },
+  { x: 26, y: 3 },
+  { x: 1, y: 23 },
+  { x: 26, y: 23 },
 ];
 
 window.MAZE = MAZE;
 window.TUNNEL_ROW = TUNNEL_ROW;
 window.PACMAN_START = PACMAN_START;
 window.GHOST_STARTS = GHOST_STARTS;
+window.POWER_PELLET_POSITIONS = POWER_PELLET_POSITIONS;

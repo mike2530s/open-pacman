@@ -5,6 +5,7 @@ const TILE = 20;
 const WALL_COLOR = '#2121ff';
 const DOOR_COLOR = '#ffb8ff';
 const DOT_COLOR = '#ffb897';
+const POWER_PELLET_COLOR = '#ffb897';
 
 function cellCenter( x, y ) {
   return { cx: x * TILE + TILE / 2, cy: y * TILE + TILE / 2 };
@@ -79,6 +80,22 @@ function drawDots( ctx, grid ) {
   }
 }
 
+function drawPowerPellets( ctx, grid, frame ) {
+  ctx.fillStyle = POWER_PELLET_COLOR;
+  // Pulso: tamaño varía con frame
+  const pulse = Math.sin( frame * 0.15 ) * 0.3 + 0.7;
+  const radius = 5 * pulse;
+  for ( let y = 0; y < grid.length; y++ ) {
+    for ( let x = 0; x < grid[ 0 ].length; x++ ) {
+      if ( grid[ y ][ x ] !== 4 ) continue;
+      const { cx, cy } = cellCenter( x, y );
+      ctx.beginPath();
+      ctx.arc( cx, cy, radius, 0, Math.PI * 2 );
+      ctx.fill();
+    }
+  }
+}
+
 function drawPacman( ctx, p, frame ) {
   const { cx, cy } = cellCenter( p.x, p.y );
   let rot = 0;
@@ -98,7 +115,7 @@ function drawPacman( ctx, p, frame ) {
   ctx.fill();
 }
 
-function drawGhost( ctx, g, color ) {
+function drawGhost( ctx, g, color, frame, frightenedTimer ) {
   const { cx, cy } = cellCenter( g.x, g.y );
   const r = TILE / 2 - 1;
   const top = cy - r;
@@ -106,19 +123,35 @@ function drawGhost( ctx, g, color ) {
   const left = cx - r;
   const right = cx + r;
 
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
-  ctx.lineTo( right, bottom );
-  // falda ondulada (3 picos)
-  ctx.lineTo( right - r * 0.66, bottom - 4 );
-  ctx.lineTo( cx, bottom );
-  ctx.lineTo( left + r * 0.66, bottom - 4 );
-  ctx.lineTo( left, bottom );
-  ctx.closePath();
-  ctx.fill();
+  // Determinar color del cuerpo
+  let bodyColor = color;
+  if ( g.eaten ) {
+    // Solo ojos, sin cuerpo
+  } else if ( g.frightened ) {
+    // Flash blanco cuando queda <2s (FLASH_THRESHOLD = 120 frames)
+    if ( frightenedTimer > 0 && frightenedTimer < 120 && Math.floor( frightenedTimer / 8 ) % 2 === 0 ) {
+      bodyColor = '#ffffff'; // flash blanco
+    } else {
+      bodyColor = '#2121ff'; // azul frightened
+    }
+  }
 
-  // ojos mirando segun direccion
+  // Dibujar cuerpo (si no está comido)
+  if ( !g.eaten ) {
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
+    ctx.lineTo( right, bottom );
+    // falda ondulada (3 picos)
+    ctx.lineTo( right - r * 0.66, bottom - 4 );
+    ctx.lineTo( cx, bottom );
+    ctx.lineTo( left + r * 0.66, bottom - 4 );
+    ctx.lineTo( left, bottom );
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ojos mirando segun direccion (siempre visibles)
   const dir = DIRS[ g.dir ] || { x: 0, y: 0 };
   const ex = dir.x * 1.6;
   const ey = dir.y * 1.6;
@@ -127,10 +160,25 @@ function drawGhost( ctx, g, color ) {
     ctx.beginPath();
     ctx.arc( cx + off, cy - 1, 3, 0, Math.PI * 2 );
     ctx.fill();
-    ctx.fillStyle = '#0000bb';
-    ctx.beginPath();
-    ctx.arc( cx + off + ex, cy - 1 + ey, 1.5, 0, Math.PI * 2 );
-    ctx.fill();
+    if ( !g.frightened && !g.eaten ) {
+      // Ojos normales (azules) solo si no frightened ni comido
+      ctx.fillStyle = '#0000bb';
+      ctx.beginPath();
+      ctx.arc( cx + off + ex, cy - 1 + ey, 1.5, 0, Math.PI * 2 );
+      ctx.fill();
+    } else if ( g.frightened ) {
+      // Ojos blancos con pupilas pequeñas mirando hacia Pac-Man (simplificado: centro)
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc( cx + off, cy - 1, 1, 0, Math.PI * 2 );
+      ctx.fill();
+    } else if ( g.eaten ) {
+      // Ojos "mirando" hacia la pen (simplificado)
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc( cx + off, cy - 1, 1, 0, Math.PI * 2 );
+      ctx.fill();
+    }
   }
 }
 
@@ -157,8 +205,9 @@ function draw( ctx, game, frame ) {
   drawWalls( ctx, grid );
   drawDoor( ctx, grid );
   drawDots( ctx, grid );
+  drawPowerPellets( ctx, grid, frame );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000' ) );
+  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000', frame, game.frightenedTimer ) );
   drawHUD( ctx, game, W );
 }
 
