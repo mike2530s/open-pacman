@@ -99,6 +99,24 @@ function canMove( grid, x, y, dir, actor ) {
   return !isWall( grid, tx, ty, actor );
 }
 
+// Elige un dir valido para un fantasma en su celda actual. Preferir preferido.
+function chooseGhostDir( grid, x, y, currentDir, preferido ) {
+  const candidatos = [];
+  if ( preferido && canMove( grid, x, y, preferido, 'ghost' ) ) candidatos.push( preferido );
+  for ( const dir of Object.keys( DIRS ) ) {
+    if ( dir === preferido ) continue;
+    if ( dir === OPPOSITE[ currentDir ] ) continue;
+    if ( canMove( grid, x, y, dir, 'ghost' ) ) candidatos.push( dir );
+  }
+  if ( candidatos.length ) return candidatos[ 0 ];
+  // Si no hay alternativa que no sea opuesto, permitir opuesto para no atascar.
+  for ( const dir of Object.keys( DIRS ) ) {
+    if ( dir === preferido ) continue;
+    if ( canMove( grid, x, y, dir, 'ghost' ) ) candidatos.push( dir );
+  }
+  return candidatos.length ? candidatos[ 0 ] : currentDir;
+}
+
 function wrapTunnel( a, width ) {
   if ( Math.round( a.y ) === TUNNEL_ROW ) {
     if ( a.x < 0 ) a.x += width;
@@ -381,7 +399,9 @@ function moveGhost( game, g ) {
     if ( g.respawnTimer === 0 ) {
       g.frightened = false;
       g.speed = GHOST_SPEED;
-      g.dir = 'up'; // Salir de la pen hacia arriba
+      g.x = PEN_CENTER.x;
+      g.y = PEN_CENTER.y;
+      g.dir = chooseGhostDir( grid, g.x, g.y, g.dir, 'up' );
     }
   } else if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
@@ -410,6 +430,19 @@ function moveGhost( game, g ) {
       decideGhost( game, g );
       if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
     }
+  }
+
+  // Mantiene al fantasma sobre el centro de la celda en el eje perpendicular.
+  if ( g.dir === 'left' || g.dir === 'right' ) g.y = Math.round( g.y );
+  else if ( g.dir === 'up' || g.dir === 'down' ) g.x = Math.round( g.x );
+
+  // No permitir que el siguiente paso cruce una pared, aunque venga desalineado.
+  const cx = Math.round( g.x );
+  const cy = Math.round( g.y );
+  if ( !canMove( grid, cx, cy, g.dir, 'ghost' ) ) {
+    g.x = cx;
+    g.y = cy;
+    return;
   }
 
   const d = DIRS[ g.dir ];
@@ -450,7 +483,11 @@ function update( game ) {
     if ( g.kind === 'pinky' && game.frame >= PINKY_RELEASE ) g.released = true;
     else if ( g.kind === 'inky' && game.dotsEaten >= INKY_RELEASE_DOTS ) g.released = true;
     else if ( g.kind === 'clyde' && game.dotsEaten >= CLYDE_RELEASE_DOTS ) g.released = true;
-    if ( g.released ) g.dir = 'up';
+    if ( g.released ) {
+      g.x = Math.round( g.x );
+      g.y = Math.round( g.y );
+      g.dir = chooseGhostDir( game.grid, g.x, g.y, g.dir, 'up' );
+    }
   }
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
@@ -466,6 +503,8 @@ function update( game ) {
         g.eaten = true;
         g.frightened = false;
         g.speed = GHOST_SPEED;
+        g.x = Math.round( g.x );
+        g.y = Math.round( g.y );
       } else if ( !g.frightened && !g.eaten ) {
         // Colisión normal: pierde vida
         game.lives--;
