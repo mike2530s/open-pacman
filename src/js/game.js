@@ -10,12 +10,12 @@ const DIRS = {
 };
 const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 
-const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
-const GHOST_SPEED = 0.1;    // 1/10 celda/frame
+const PACMAN_SPEED = 0.1;    // 1/10 celda/frame
+const GHOST_SPEED = 1 / 12;  // ~0.0833, 12 frames/celda (un poco mas lento)
 
 // Power pellets & frightened mode
-const FRIGHTENED_DURATION = 420;   // frames @ 60fps = 7s
-const FRIGHTENED_SPEED = 0.05;     // half normal speed
+const FRIGHTENED_DURATION = 480;   // frames @ 60fps = 8s
+const FRIGHTENED_SPEED = 0.04;     // un poco mas lento
 const FLASH_THRESHOLD = 120;       // frames < 2s = flash white
 const FRIGHTENED_POINTS = [200, 400, 800, 1600];
 const RESPAWN_DELAY = 120;         // frames before ghost leaves pen
