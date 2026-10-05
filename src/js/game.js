@@ -370,14 +370,14 @@ function moveGhost( game, g ) {
     const path = findPath( grid, gx, gy, PEN_CENTER.x, PEN_CENTER.y );
     if ( path.length > 0 ) {
       const next = path[ 0 ];
-      const dx = next.x - gx;
-      const dy = next.y - gy;
       for ( const dir of Object.keys( DIRS ) ) {
-        if ( DIRS[ dir ].x === dx && DIRS[ dir ].y === dy ) {
+        if ( DIRS[ dir ].x === next.x - gx && DIRS[ dir ].y === next.y - gy ) {
           g.dir = dir;
           break;
         }
       }
+    } else {
+      g.dir = chooseGhostDir( grid, gx, gy, g.dir, g.dir );
     }
     // Si llegó al centro de la pen, iniciar respawn
     if ( gx === Math.round( PEN_CENTER.x ) && gy === Math.round( PEN_CENTER.y ) ) {
@@ -403,7 +403,7 @@ function moveGhost( game, g ) {
       g.y = PEN_CENTER.y;
       g.dir = chooseGhostDir( grid, g.x, g.y, g.dir, 'up' );
     }
-  } else if ( aligned( g.x ) && aligned( g.y ) ) {
+  } else if ( !g.eaten && aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
     if ( !g.released ) {
