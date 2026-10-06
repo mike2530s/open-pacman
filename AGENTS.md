@@ -11,8 +11,8 @@ src/
 └── js/
     ├── main.js     # Loop, input, overlays
     ├── game.js     # State, rules, movement, collisions
-    ├── maze.js     # Level data (28x31), constants
-    └── render.js   # Canvas drawing (walls, dots, entities, HUD)
+    ├── maze.js     # Infinite world: chunk store, getTile/setTile, generator
+    └── render.js   # Canvas drawing (tiles, dots, entities, HUD)
 ```
 
 ## Run
@@ -22,15 +22,16 @@ Open `src/index.html` in a browser. No server needed.
 - `createGame()` — fresh game state
 - `update(game)` — advances one tick
 - `draw(ctx, game, frame)` — renders to canvas
-- `MAZE`, `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS` — level constants
+- `PACMAN_START`, `GHOST_STARTS` — spawn constants
+- `getTile(x,y)`, `setTile(x,y,v)`, `chunks`, `CHUNK` — world accessors
 - `DIRS` — direction vectors
 
 ## Architecture Notes
 - **No modules** — scripts load in order via `<script>` tags, share globals
 - **Game loop** in `main.js` uses `requestAnimationFrame`
-- **Maze** is parsed from strings at load; each game copies `MAZE` to `game.grid` (mutable)
-- **Tunnel** at row 14 wraps X coordinate
-- **Ghosts**: `hunter` chases Pac-Man (Manhattan), `random` picks valid dir
+- **Maze** is procedurally generated in 16x16 chunks (drunkard walk), streamed via `getTile`/`setTile`; no tunnel wrap
+- **Camera**: render centers on Pac-Man, only visible tiles drawn
+- **Ghosts**: A* chase via `findPath`, personalities blinky/pinky/inky/clyde
 - **Collision** radius: 0.5 cells
 
 ## Conventions
@@ -39,7 +40,7 @@ Open `src/index.html` in a browser. No server needed.
 - All state mutation happens in `game.js` functions
 
 ## Common Tasks
-- **Modify level**: edit `MAZE_STR` in `maze.js`
+- **Modify level**: edit `generateChunk` in `maze.js`
 - **Tune speeds**: `PACMAN_SPEED`, `GHOST_SPEED` in `game.js`
 - **Add ghost types**: extend `decideGhost()` in `game.js`
 - **Change rendering**: edit `render.js` drawing functions
