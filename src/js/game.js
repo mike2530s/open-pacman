@@ -43,10 +43,15 @@ function createGame() {
       hasGun: false,
       ammo: 0,
       gunTimer: 0,
+      crosses: 0,
     },
     bullets: [],
     zombies: [],
     zombieSpawnTimer: 0,
+    ghosts: [],
+    crosses: [],
+    shieldTimer: 0,
+    nextShieldAt: 1000,
   };
 }
 
@@ -187,6 +192,11 @@ function movePacman( game ) {
       p.ammo += 15;
       p.gunTimer = 8 * 60; // 8s @60fps
     }
+    // Recoger cruz (tile 6).
+    if ( getTile( p.x, p.y ) === 6 ) {
+      setTile( p.x, p.y, 0 );
+      p.crosses++;
+    }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( p.x, p.y, p.dir, 'pacman' ) ) return;
   }
@@ -211,8 +221,10 @@ function resetPositions( game ) {
   p.nextDir = null;
   game.frightenedTimer = 0;
   game.ghostsEatenThisPower = 0;
+  game.shieldTimer = 0;
   game.zombies = [];
   game.zombieSpawnTimer = 0;
+  game.ghosts = [];
   for ( const b of game.bullets ) b.x = -999; // descartar
   game.bullets = [];
 }
@@ -311,17 +323,14 @@ function updateBullets( game ) {
       game.bullets.splice( i, 1 );
       continue;
     }
-    if ( v === 5 ) {
-      setTile( tx, ty, 0 );
-      game.bullets.splice( i, 1 );
-      continue;
-    }
     // Colisión con zombies
     let hit = false;
     for ( let zi = game.zombies.length - 1; zi >= 0; zi-- ) {
       const z = game.zombies[ zi ];
       if ( Math.abs( z.x - b.x ) < 0.5 && Math.abs( z.y - b.y ) < 0.5 ) {
         game.score += 200;
+        // Zombie muerto → ghost aliado en la misma celda
+        game.ghosts.push( { x: z.x, y: z.y, dir: 'up', speed: ZOMBIE_SPEED, kind: 'ghost' } );
         game.zombies.splice( zi, 1 );
         hit = true;
         break;
@@ -338,6 +347,89 @@ function updateBullets( game ) {
   }
 }
 
+// Ghost enemigo: persigue a Pacman con A*; contacto le quita vida.
+function moveGhost( game, gh ) {
+  const px = Math.round( game.pacman.x );
+  const py = Math.round( game.pacman.y );
+  const gx = Math.round( gh.x );
+  const gy = Math.round( gh.y );
+
+  if ( aligned( gh.x ) && aligned( gh.y ) ) {
+    gh.x = Math.round( gh.x );
+    gh.y = Math.round( gh.y );
+    const path = findPath( gx, gy, px, py );
+    if ( path.length > 0 ) {
+      const next = path[ 0 ];
+      const dx = next.x - gx;
+      const dy = next.y - gy;
+      for ( const dir of Object.keys( DIRS ) ) {
+        if ( DIRS[ dir ].x === dx && DIRS[ dir ].y === dy ) { gh.dir = dir; break; }
+      }
+    } else {
+      gh.dir = wanderDir( gx, gy, gh.dir );
+    }
+    if ( !canMove( gh.x, gh.y, gh.dir, 'ghost' ) ) return;
+  }
+
+  if ( gh.dir === 'left' || gh.dir === 'right' ) gh.y = Math.round( gh.y );
+  else if ( gh.dir === 'up' || gh.dir === 'down' ) gh.x = Math.round( gh.x );
+
+  const cx = Math.round( gh.x );
+  const cy = Math.round( gh.y );
+  if ( !canMove( cx, cy, gh.dir, 'ghost' ) ) {
+    gh.x = cx;
+    gh.y = cy;
+    return;
+  }
+
+  const d = DIRS[ gh.dir ];
+  gh.x += d.x * gh.speed;
+  gh.y += d.y * gh.speed;
+
+  // Contacto con Pacman: pierde vida (o escudo destruye al ghost)
+  if ( Math.abs( game.pacman.x - gh.x ) < 0.5 && Math.abs( game.pacman.y - gh.y ) < 0.5 ) {
+    if ( game.shieldTimer > 0 ) {
+      game.ghosts.splice( game.ghosts.indexOf( gh ), 1 );
+      return;
+    }
+    game.lives--;
+    if ( game.lives <= 0 ) {
+      game.state = 'lost';
+      return;
+    }
+    resetPositions( game );
+  }
+}
+
+function wanderDir( x, y, currentDir ) {
+  const options = Object.keys( DIRS ).filter(
+    ( dir ) => dir !== OPPOSITE[ currentDir ] && canMove( x, y, dir, 'ghost' )
+  );
+  const choices = options.length ? options : [ '' + OPPOSITE[ currentDir ] ];
+  return choices[ Math.floor( Math.random() * choices.length ) ];
+}
+
+// Tecla K: consume 1 cruz y mata ghosts en linea recta hasta un muro.
+function useCross( game ) {
+  const p = game.pacman;
+  if ( p.crosses <= 0 ) return;
+  p.crosses--;
+  const d = DIRS[ p.dir ];
+  let x = Math.round( p.x ) + d.x;
+  let y = Math.round( p.y ) + d.y;
+  while ( !isWall( x, y, 'ghost' ) ) {
+    for ( let i = game.ghosts.length - 1; i >= 0; i-- ) {
+      const gh = game.ghosts[ i ];
+      if ( Math.abs( gh.x - x ) < 0.5 && Math.abs( gh.y - y ) < 0.5 ) {
+        game.score += 50;
+        game.ghosts.splice( i, 1 );
+      }
+    }
+    x += d.x;
+    y += d.y;
+  }
+}
+
 function collides( a, b ) {
   return Math.abs( a.x - b.x ) < 0.5 && Math.abs( a.y - b.y ) < 0.5;
 }
@@ -346,16 +438,33 @@ function update( game ) {
   game.frame++;
   if ( game.frightenedTimer > 0 ) game.frightenedTimer--;
   movePacman( game );
+  // Evicción de chunks lejanos cada 60 frames
+  if ( game.frame % 60 === 0 ) {
+    evictFarChunks( Math.round( game.pacman.x ), Math.round( game.pacman.y ), 3 );
+  }
   game.zombieSpawnTimer++;
   if ( game.zombieSpawnTimer >= ZOMBIE_SPAWN_INTERVAL ) {
     game.zombieSpawnTimer = 0;
     spawnZombie( game );
   }
   game.zombies.forEach( ( z ) => moveZombie( game, z ) );
+  game.ghosts.forEach( ( gh ) => moveGhost( game, gh ) );
   updateBullets( game );
+
+  // Escudo: cada 1000 pts otorga 15s de proteccion
+  if ( game.score >= game.nextShieldAt ) {
+    game.shieldTimer = 15 * 60;
+    game.nextShieldAt += 1000;
+  }
+  if ( game.shieldTimer > 0 ) game.shieldTimer--;
 
   for ( const z of game.zombies ) {
     if ( collides( game.pacman, z ) ) {
+      if ( game.shieldTimer > 0 ) {
+        // Escudo activo: destruye al zombie sin daño
+        game.zombies.splice( game.zombies.indexOf( z ), 1 );
+        break;
+      }
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
@@ -371,4 +480,5 @@ window.createGame = createGame;
 window.update = update;
 window.fireBullet = fireBullet;
 window.updateBullets = updateBullets;
+window.useCross = useCross;
 window.DIRS = DIRS;

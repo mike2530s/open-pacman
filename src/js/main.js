@@ -26,6 +26,11 @@ document.addEventListener( 'keydown', ( e ) => {
   if ( e.key === ' ' ) {
     e.preventDefault();
     if ( game.state === 'playing' && typeof fireBullet === 'function' ) fireBullet( game );
+    return;
+  }
+  if ( e.key === 'k' || e.key === 'K' ) {
+    e.preventDefault();
+    if ( game.state === 'playing' && typeof useCross === 'function' ) useCross( game );
   }
 } );
 
