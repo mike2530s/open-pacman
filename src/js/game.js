@@ -10,21 +10,13 @@ const DIRS = {
 const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 
 const PACMAN_SPEED = 0.1;    // 1/10 celda/frame
-const GHOST_SPEED = 1 / 12;  // ~0.0833, 12 frames/celda (un poco mas lento)
 
 // Power pellets & frightened mode
 const FRIGHTENED_DURATION = 480;   // frames @ 60fps = 8s
-const FRIGHTENED_SPEED = 0.04;     // un poco mas lento
-const FRIGHTENED_POINTS = [200, 400, 800, 1600];
-const RESPAWN_DELAY = 120;         // frames antes de revivir fantasma comido
-
-// Posiciones iniciales de fantasmas (alrededor del inicio de Pacman)
-const GHOST_STARTS = [
-  { x: 8, y: 4, kind: 'blinky' },
-  { x: 4, y: 8, kind: 'pinky' },
-  { x: 12, y: 8, kind: 'inky' },
-  { x: 8, y: 12, kind: 'clyde' },
-];
+const ZOMBIE_SPAWN_INTERVAL = 180; // frames entre spawns
+const MAX_ZOMBIES = 12;
+const SPAWN_MIN_DIST = 8;
+const ZOMBIE_SPEED = 1 / 12;
 
 // Crea una partida nueva.
 function createGame() {
@@ -32,7 +24,6 @@ function createGame() {
   getTile( PACMAN_START.x, PACMAN_START.y );
   // Limpiar celdas de spawn: nunca deben ser bloque ni dot
   setTile( PACMAN_START.x, PACMAN_START.y, 0 );
-  for ( const g of GHOST_STARTS ) setTile( g.x, g.y, 0 );
 
   return {
     state: 'start',
@@ -54,16 +45,8 @@ function createGame() {
       gunTimer: 0,
     },
     bullets: [],
-    ghosts: GHOST_STARTS.map( ( g ) => ( {
-      x: g.x,
-      y: g.y,
-      dir: 'up',
-      speed: GHOST_SPEED,
-      kind: g.kind,
-      frightened: false,
-      eaten: false,
-      respawnTimer: 0,
-    } ) ),
+    zombies: [],
+    zombieSpawnTimer: 0,
   };
 }
 
@@ -217,145 +200,8 @@ function movePacman( game ) {
 function startFrightenedMode( game ) {
   game.frightenedTimer = FRIGHTENED_DURATION;
   game.ghostsEatenThisPower = 0;
-  for ( const g of game.ghosts ) {
-    if ( !g.eaten ) {
-      g.frightened = true;
-      g.speed = FRIGHTENED_SPEED;
-    }
-  }
 }
 
-function decideGhost( game, g ) {
-  const p = game.pacman;
-  const gx = Math.round( g.x );
-  const gy = Math.round( g.y );
-  const px = Math.round( p.x );
-  const py = Math.round( p.y );
-
-  // Modo frightened: movimiento aleatorio, no persigue
-  if ( g.frightened ) {
-    const options = Object.keys( DIRS ).filter(
-      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( gx, gy, dir, 'ghost' )
-    );
-    const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
-    return;
-  }
-
-  // Comportamiento normal (chase)
-  let tx = px;
-  let ty = py;
-
-  if ( g.kind === 'blinky' ) {
-    tx = px;
-    ty = py;
-  } else if ( g.kind === 'pinky' ) {
-    const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
-    tx = px + pd.x * 4;
-    ty = py + pd.y * 4;
-    if ( isWall( tx, ty, 'ghost' ) ) {
-      tx = px;
-      ty = py;
-    }
-  } else if ( g.kind === 'inky' ) {
-    const blinky = game.ghosts.find( ( gg ) => gg.kind === 'blinky' );
-    if ( blinky ) {
-      const bx = Math.round( blinky.x );
-      const by = Math.round( blinky.y );
-      tx = px + ( px - bx );
-      ty = py + ( py - by );
-      if ( isWall( tx, ty, 'ghost' ) ) {
-        tx = px;
-        ty = py;
-      }
-    }
-  } else if ( g.kind === 'clyde' ) {
-    const dist = Math.abs( gx - px ) + Math.abs( gy - py );
-    if ( dist <= 8 ) {
-      const options = Object.keys( DIRS ).filter(
-        ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( gx, gy, dir, 'ghost' )
-      );
-      const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
-      g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
-      return;
-    }
-  }
-
-  // Usar A* para elegir dirección (chase normal)
-  const path = findPath( gx, gy, tx, ty );
-  if ( path.length > 0 ) {
-    const next = path[ 0 ];
-    const dx = next.x - gx;
-    const dy = next.y - gy;
-    for ( const dir of Object.keys( DIRS ) ) {
-      if ( DIRS[ dir ].x === dx && DIRS[ dir ].y === dy ) {
-        g.dir = dir;
-        break;
-      }
-    }
-  } else {
-    const options = Object.keys( DIRS ).filter(
-      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( gx, gy, dir, 'ghost' )
-    );
-    const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
-  }
-}
-
-function moveGhost( game, g ) {
-  // Decrementar timer de frightened mode
-  if ( game.frightenedTimer > 0 ) {
-    game.frightenedTimer--;
-    if ( game.frightenedTimer === 0 ) {
-      for ( const gg of game.ghosts ) {
-        if ( gg.frightened && !gg.eaten ) {
-          gg.frightened = false;
-          gg.speed = GHOST_SPEED;
-        }
-      }
-    }
-  }
-
-  // Fantasma comido: esperar delay y revivir en su inicio
-  if ( g.eaten ) {
-    g.respawnTimer--;
-    if ( g.respawnTimer <= 0 ) {
-      const i = GHOST_STARTS.findIndex( ( s ) => s.kind === g.kind );
-      const start = GHOST_STARTS[ i ] || GHOST_STARTS[ 0 ];
-      g.eaten = false;
-      g.frightened = false;
-      g.speed = GHOST_SPEED;
-      g.x = start.x;
-      g.y = start.y;
-      g.dir = chooseGhostDir( g.x, g.y, 'up', 'up' );
-    }
-    return;
-  }
-
-  if ( aligned( g.x ) && aligned( g.y ) ) {
-    g.x = Math.round( g.x );
-    g.y = Math.round( g.y );
-    decideGhost( game, g );
-    if ( !canMove( g.x, g.y, g.dir, 'ghost' ) ) return;
-  }
-
-  // Mantiene al fantasma sobre el centro de la celda en el eje perpendicular.
-  if ( g.dir === 'left' || g.dir === 'right' ) g.y = Math.round( g.y );
-  else if ( g.dir === 'up' || g.dir === 'down' ) g.x = Math.round( g.x );
-
-  // No permitir que el siguiente paso cruce una pared, aunque venga desalineado.
-  const cx = Math.round( g.x );
-  const cy = Math.round( g.y );
-  if ( !canMove( cx, cy, g.dir, 'ghost' ) ) {
-    g.x = cx;
-    g.y = cy;
-    return;
-  }
-
-  const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
-}
 
 function resetPositions( game ) {
   const p = game.pacman;
@@ -365,15 +211,71 @@ function resetPositions( game ) {
   p.nextDir = null;
   game.frightenedTimer = 0;
   game.ghostsEatenThisPower = 0;
-  game.ghosts.forEach( ( g, i ) => {
-    g.x = GHOST_STARTS[ i ].x;
-    g.y = GHOST_STARTS[ i ].y;
-    g.dir = 'up';
-    g.frightened = false;
-    g.eaten = false;
-    g.respawnTimer = 0;
-    g.speed = GHOST_SPEED;
-  } );
+  game.zombies = [];
+  game.zombieSpawnTimer = 0;
+  for ( const b of game.bullets ) b.x = -999; // descartar
+  game.bullets = [];
+}
+
+// Spawn de zombie en tile transitable a distancia >= SPAWN_MIN_DIST del jugador
+function spawnZombie( game ) {
+  if ( game.zombies.length >= MAX_ZOMBIES ) return;
+  const p = game.pacman;
+  for ( let tries = 0; tries < 40; tries++ ) {
+    const ox = ( ( Math.random() * 41 ) | 0 ) - 20;
+    const oy = ( ( Math.random() * 41 ) | 0 ) - 20;
+    const x = Math.round( p.x ) + ox;
+    const y = Math.round( p.y ) + oy;
+    const dist = Math.abs( x - p.x ) + Math.abs( y - p.y );
+    if ( dist < SPAWN_MIN_DIST ) continue;
+    const v = getTile( x, y );
+    if ( v === 1 || v === 5 ) continue;
+    game.zombies.push( { x, y, dir: 'up', speed: ZOMBIE_SPEED, kind: 'zombie' } );
+    return;
+  }
+}
+
+function moveZombie( game, z ) {
+  const px = Math.round( game.pacman.x );
+  const py = Math.round( game.pacman.y );
+
+  if ( aligned( z.x ) && aligned( z.y ) ) {
+    z.x = Math.round( z.x );
+    z.y = Math.round( z.y );
+    // Chase: A* al jugador. Tile 5 bloquea (neighbors ya lo excluye).
+    const path = findPath( z.x, z.y, px, py );
+    if ( path.length > 0 ) {
+      const next = path[ 0 ];
+      const dx = next.x - z.x;
+      const dy = next.y - z.y;
+      for ( const dir of Object.keys( DIRS ) ) {
+        if ( DIRS[ dir ].x === dx && DIRS[ dir ].y === dy ) { z.dir = dir; break; }
+      }
+    } else {
+      // Contenido por bloques: deambular
+      const options = Object.keys( DIRS ).filter(
+        ( dir ) => dir !== OPPOSITE[ z.dir ] && canMove( z.x, z.y, dir, 'ghost' )
+      );
+      const choices = options.length ? options : [ '' + OPPOSITE[ z.dir ] ];
+      z.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+    }
+    if ( !canMove( z.x, z.y, z.dir, 'ghost' ) ) return;
+  }
+
+  if ( z.dir === 'left' || z.dir === 'right' ) z.y = Math.round( z.y );
+  else if ( z.dir === 'up' || z.dir === 'down' ) z.x = Math.round( z.x );
+
+  const cx = Math.round( z.x );
+  const cy = Math.round( z.y );
+  if ( !canMove( cx, cy, z.dir, 'ghost' ) ) {
+    z.x = cx;
+    z.y = cy;
+    return;
+  }
+
+  const d = DIRS[ z.dir ];
+  z.x += d.x * z.speed;
+  z.y += d.y * z.speed;
 }
 
 // Dispara una bala desde Pacman en su direccion actual.
@@ -414,15 +316,13 @@ function updateBullets( game ) {
       game.bullets.splice( i, 1 );
       continue;
     }
-    // Colisión con fantasmas (placeholder de zombies)
+    // Colisión con zombies
     let hit = false;
-    for ( const g of game.ghosts ) {
-      if ( !g.eaten && Math.abs( g.x - b.x ) < 0.5 && Math.abs( g.y - b.y ) < 0.5 ) {
+    for ( let zi = game.zombies.length - 1; zi >= 0; zi-- ) {
+      const z = game.zombies[ zi ];
+      if ( Math.abs( z.x - b.x ) < 0.5 && Math.abs( z.y - b.y ) < 0.5 ) {
         game.score += 200;
-        g.eaten = true;
-        g.frightened = false;
-        g.speed = GHOST_SPEED;
-        g.respawnTimer = RESPAWN_DELAY;
+        game.zombies.splice( zi, 1 );
         hit = true;
         break;
       }
@@ -444,30 +344,25 @@ function collides( a, b ) {
 
 function update( game ) {
   game.frame++;
+  if ( game.frightenedTimer > 0 ) game.frightenedTimer--;
   movePacman( game );
-  game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
+  game.zombieSpawnTimer++;
+  if ( game.zombieSpawnTimer >= ZOMBIE_SPAWN_INTERVAL ) {
+    game.zombieSpawnTimer = 0;
+    spawnZombie( game );
+  }
+  game.zombies.forEach( ( z ) => moveZombie( game, z ) );
   updateBullets( game );
 
-  for ( const g of game.ghosts ) {
-    if ( collides( game.pacman, g ) ) {
-      if ( g.frightened && !g.eaten ) {
-        const idx = game.ghostsEatenThisPower;
-        const points = FRIGHTENED_POINTS[ Math.min( idx, FRIGHTENED_POINTS.length - 1 ) ];
-        game.score += points;
-        game.ghostsEatenThisPower++;
-        g.eaten = true;
-        g.frightened = false;
-        g.speed = GHOST_SPEED;
-        g.respawnTimer = RESPAWN_DELAY;
-      } else if ( !g.frightened && !g.eaten ) {
-        game.lives--;
-        if ( game.lives <= 0 ) {
-          game.state = 'lost';
-          return;
-        }
-        resetPositions( game );
-        break;
+  for ( const z of game.zombies ) {
+    if ( collides( game.pacman, z ) ) {
+      game.lives--;
+      if ( game.lives <= 0 ) {
+        game.state = 'lost';
+        return;
       }
+      resetPositions( game );
+      break;
     }
   }
 }
