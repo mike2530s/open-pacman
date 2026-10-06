@@ -18,9 +18,20 @@ const KEY_DIR = {
 
 document.addEventListener( 'keydown', ( e ) => {
   const dir = KEY_DIR[ e.key ];
-  if ( !dir ) return;
-  e.preventDefault();
-  if ( game.state === 'playing' ) game.pacman.nextDir = dir;
+  if ( dir ) {
+    e.preventDefault();
+    if ( game.state === 'playing' ) game.pacman.nextDir = dir;
+    return;
+  }
+  if ( e.key === ' ' ) {
+    e.preventDefault();
+    if ( game.state === 'playing' && typeof fireBullet === 'function' ) fireBullet( game );
+    return;
+  }
+  if ( e.key === 'k' || e.key === 'K' ) {
+    e.preventDefault();
+    if ( game.state === 'playing' && typeof useCross === 'function' ) useCross( game );
+  }
 } );
 
 function showOverlay( title, cls, btnLabel ) {
@@ -39,15 +50,27 @@ function startGame() {
 
 if ( actionBtn ) actionBtn.addEventListener( 'click', startGame );
 
-function loop() {
+let lastTick = performance.now();
+const TICK_MS = 1000 / 60;
+let acc = 0;
+
+function loop( now ) {
   frame++;
-  if ( game.state === 'playing' ) {
-    update( game );
-    if ( game.state === 'won' ) showOverlay( 'GANASTE', 'win', 'Reiniciar' );
-    else if ( game.state === 'lost' ) showOverlay( 'PERDISTE', 'lose', 'Reiniciar' );
+  acc += now - lastTick;
+  lastTick = now;
+  // Actualiza a 60Hz fijo aunque la pantalla sea 120/144Hz.
+  let steps = 0;
+  while ( acc >= TICK_MS && steps < 4 ) {
+    acc -= TICK_MS;
+    steps++;
+    if ( game.state === 'playing' ) {
+      update( game );
+      if ( game.state === 'won' ) showOverlay( 'GANASTE', 'win', 'Reiniciar' );
+      else if ( game.state === 'lost' ) showOverlay( 'PERDISTE', 'lose', 'Reiniciar' );
+    }
   }
   draw( ctx, game, frame );
   requestAnimationFrame( loop );
 }
 
-loop();
+requestAnimationFrame( loop );
