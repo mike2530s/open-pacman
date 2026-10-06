@@ -72,11 +72,13 @@ function generateChunk( cx, cy ) {
     grid[ mid ][ CHUNK - 1 - i ] = 0;  // derecha -> centro
   }
 
-  // Dots y pellets sobre suelo (valor 0 -> 2 / 4)
+  // Dots y pellets sobre suelo (valor 0 -> 2 / 4); bloques destructibles 5
   for ( let yy = 0; yy < CHUNK; yy++ ) {
     for ( let xx = 0; xx < CHUNK; xx++ ) {
       if ( grid[ yy ][ xx ] !== 0 ) continue;
-      grid[ yy ][ xx ] = rng() < 0.8 ? 2 : 0;
+      const r = rng();
+      if ( r < 0.35 ) grid[ yy ][ xx ] = 5;        // bloque destructible
+      else if ( r < 0.35 + 0.5 ) grid[ yy ][ xx ] = 2; // dot
     }
   }
   if ( rng() < 0.5 ) {

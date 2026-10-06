@@ -18,9 +18,15 @@ const KEY_DIR = {
 
 document.addEventListener( 'keydown', ( e ) => {
   const dir = KEY_DIR[ e.key ];
-  if ( !dir ) return;
-  e.preventDefault();
-  if ( game.state === 'playing' ) game.pacman.nextDir = dir;
+  if ( dir ) {
+    e.preventDefault();
+    if ( game.state === 'playing' ) game.pacman.nextDir = dir;
+    return;
+  }
+  if ( e.key === ' ' ) {
+    e.preventDefault();
+    if ( game.state === 'playing' && typeof fireBullet === 'function' ) fireBullet( game );
+  }
 } );
 
 function showOverlay( title, cls, btnLabel ) {
