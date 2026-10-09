@@ -41,6 +41,11 @@ function drawCell( ctx, x, y, v, frame, ox, oy ) {
     ctx.beginPath();
     ctx.arc( cx, cy, 5 * pulse, 0, Math.PI * 2 );
     ctx.fill();
+  } else if ( v === 6 ) {
+    // Cruz: dos rectangulos blancos
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect( cx - 1.5, py + 3, 3, TILE - 6 );
+    ctx.fillRect( px + 3, cy - 1.5, TILE - 6, 3 );
   }
 }
 
@@ -133,6 +138,7 @@ function drawHUD( ctx, game, W ) {
   ctx.fillText( 'SCORE ' + game.score, 8, 4 );
   ctx.textAlign = 'left';
   if ( game.pacman.hasGun ) ctx.fillText( 'AMMO ' + game.pacman.ammo + ' T ' + Math.ceil( game.pacman.gunTimer / 60 ), 8, 22 );
+  ctx.fillText( 'CRUCES ' + game.pacman.crosses, 8, 40 );
   ctx.textAlign = 'right';
   ctx.fillText( 'VIDAS ' + game.lives, W - 8, 4 );
   ctx.fillText( 'ZOMBIES ' + game.zombies.length, W - 8, 22 );
@@ -160,6 +166,7 @@ function draw( ctx, game, frame ) {
 
   drawPacman( ctx, game.pacman, frame, ox, oy );
   game.zombies.forEach( ( z, i ) => drawGhost( ctx, { ...z, frightened: false, eaten: false }, '#2ecc40', frame, 0, ox, oy ) );
+  game.ghosts.forEach( ( gh, i ) => drawGhost( ctx, { ...gh, frightened: false, eaten: false }, '#ff6b6b', frame, 0, ox, oy ) );
   // Balas
   ctx.fillStyle = '#ffff00';
   for ( const b of game.bullets ) {
@@ -167,6 +174,16 @@ function draw( ctx, game, frame ) {
     ctx.arc( b.x * TILE + TILE / 2 - ox, b.y * TILE + TILE / 2 - oy, 3, 0, Math.PI * 2 );
     ctx.fill();
   }
+  // Escudo: anillo azul alrededor de Pacman
+  if ( game.shieldTimer > 0 ) {
+    const { cx, cy } = cellCenter( game.pacman.x, game.pacman.y );
+    ctx.strokeStyle = '#00aaff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc( cx - ox, cy - oy, TILE / 2 + 3, 0, Math.PI * 2 );
+    ctx.stroke();
+  }
+
   drawHUD( ctx, game, w );
 }
 
