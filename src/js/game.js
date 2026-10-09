@@ -80,6 +80,83 @@ function wrapTunnel( a, width ) {
   }
 }
 
+// A* pathfinding para fantasmas
+// Devuelve array de pasos {x,y} desde (sx,sy) hasta (tx,ty) o [] si no hay ruta
+function findPath( grid, sx, sy, tx, ty ) {
+  const W = grid[ 0 ].length;
+  const H = grid.length;
+  const start = sx + ',' + sy;
+  const goal = tx + ',' + ty;
+  if ( start === goal ) return [];
+
+  const open = [ { x: sx, y: sy, g: 0, f: heuristic( sx, sy, tx, ty ), parent: null } ];
+  const closed = new Set();
+  const cameFrom = new Map();
+
+  while ( open.length ) {
+    open.sort( ( a, b ) => a.f - b.f );
+    const current = open.shift();
+    const key = current.x + ',' + current.y;
+    if ( closed.has( key ) ) continue;
+    closed.add( key );
+
+    if ( current.x === tx && current.y === ty ) {
+      const path = [];
+      let node = current;
+      while ( node.parent ) {
+        path.unshift( { x: node.x, y: node.y } );
+        node = node.parent;
+      }
+      return path;
+    }
+
+    for ( const n of neighbors( current.x, current.y, grid ) ) {
+      const nkey = n.x + ',' + n.y;
+      if ( closed.has( nkey ) ) continue;
+      const g = current.g + 1;
+      const existing = open.find( ( o ) => o.x === n.x && o.y === n.y );
+      if ( !existing || g < existing.g ) {
+        const f = g + heuristic( n.x, n.y, tx, ty );
+        const newNode = { x: n.x, y: n.y, g, f, parent: current };
+        if ( existing ) {
+          existing.g = g;
+          existing.f = f;
+          existing.parent = current;
+        } else {
+          open.push( newNode );
+        }
+      }
+    }
+  }
+  return [];
+}
+
+function heuristic( ax, ay, bx, by ) {
+  return Math.abs( ax - bx ) + Math.abs( ay - by );
+}
+
+// Vecinas válidas para A* (maneja túnel)
+function neighbors( x, y, grid ) {
+  const W = grid[ 0 ].length;
+  const H = grid.length;
+  const result = [];
+  for ( const dir of Object.keys( DIRS ) ) {
+    const d = DIRS[ dir ];
+    let nx = x + d.x;
+    let ny = y + d.y;
+    if ( ny === TUNNEL_ROW && ( nx < 0 || nx >= W ) ) {
+      nx = ( nx + W ) % W;
+    }
+    if ( nx >= 0 && nx < W && ny >= 0 && ny < H ) {
+      const v = grid[ ny ][ nx ];
+      if ( v !== 1 && v !== 3 ) {
+        result.push( { x: nx, y: ny } );
+      }
+    }
+  }
+  return result;
+}
+
 function movePacman( game ) {
   const p = game.pacman;
   const grid = game.grid;
