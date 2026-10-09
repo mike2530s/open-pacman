@@ -27,6 +27,9 @@ function drawCell( ctx, x, y, v, frame, ox, oy ) {
   if ( v === 1 ) {
     ctx.fillStyle = WALL_COLOR;
     ctx.fillRect( px, py, TILE, TILE );
+  } else if ( v === 5 ) {
+    ctx.fillStyle = '#8b5a2b'; // bloque destructible marron
+    ctx.fillRect( px + 1, py + 1, TILE - 2, TILE - 2 );
   } else if ( v === 2 ) {
     ctx.fillStyle = DOT_COLOR;
     ctx.beginPath();
@@ -128,6 +131,8 @@ function drawHUD( ctx, game, W ) {
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   ctx.fillText( 'SCORE ' + game.score, 8, 4 );
+  ctx.textAlign = 'left';
+  if ( game.pacman.hasGun ) ctx.fillText( 'AMMO ' + game.pacman.ammo + ' T ' + Math.ceil( game.pacman.gunTimer / 60 ), 8, 22 );
   ctx.textAlign = 'right';
   ctx.fillText( 'VIDAS ' + game.lives, W - 8, 4 );
 }
@@ -155,6 +160,13 @@ function draw( ctx, game, frame ) {
 
   drawPacman( ctx, game.pacman, frame, ox, oy );
   game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000', frame, game.frightenedTimer, ox, oy ) );
+  // Balas
+  ctx.fillStyle = '#ffff00';
+  for ( const b of game.bullets ) {
+    ctx.beginPath();
+    ctx.arc( b.x * TILE + TILE / 2 - ox, b.y * TILE + TILE / 2 - oy, 3, 0, Math.PI * 2 );
+    ctx.fill();
+  }
   drawHUD( ctx, game, w );
 }
 
