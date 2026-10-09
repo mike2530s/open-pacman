@@ -1,6 +1,5 @@
 // game.js
-// Estado y reglas. Depende de globals de maze.js: MAZE, TUNNEL_ROW,
-// PACMAN_START, GHOST_STARTS.
+// Estado y reglas. Depende de globals de maze.js: getTile, setTile, PACMAN_START.
 
 const DIRS = {
   left: { x: -1, y: 0 },
@@ -16,41 +15,30 @@ const GHOST_SPEED = 1 / 12;  // ~0.0833, 12 frames/celda (un poco mas lento)
 // Power pellets & frightened mode
 const FRIGHTENED_DURATION = 480;   // frames @ 60fps = 8s
 const FRIGHTENED_SPEED = 0.04;     // un poco mas lento
-const FLASH_THRESHOLD = 120;       // frames < 2s = flash white
 const FRIGHTENED_POINTS = [200, 400, 800, 1600];
-const RESPAWN_DELAY = 120;         // frames before ghost leaves pen
-const PEN_CENTER = { x: 13, y: 14 }; // centro de la pen para respawn (entero para A*)
-const PINKY_RELEASE = 240;         // frames @ 60fps = 4s
-const INKY_RELEASE_DOTS = 30;
-const CLYDE_RELEASE_DOTS = 60;
+const RESPAWN_DELAY = 120;         // frames antes de revivir fantasma comido
 
-// Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
-// dots sin destruir el original, y reiniciar.
+// Posiciones iniciales de fantasmas (alrededor del inicio de Pacman)
+const GHOST_STARTS = [
+  { x: 8, y: 4, kind: 'blinky' },
+  { x: 4, y: 8, kind: 'pinky' },
+  { x: 12, y: 8, kind: 'inky' },
+  { x: 8, y: 12, kind: 'clyde' },
+];
+
+// Crea una partida nueva.
 function createGame() {
-  const grid = MAZE.map( ( row ) => row.slice() );
-  // La celda de inicio de Pacman arranca sin dot.
-  grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
-
-  let dots = 0;
-  let powerPellets = 0;
-  for ( const row of grid ) {
-    for ( const v of row ) {
-      if ( v === 2 ) dots++;
-      else if ( v === 4 ) powerPellets++;
-    }
-  }
+  // Asegurar que existe el chunk de inicio (genera al empezar).
+  getTile( PACMAN_START.x, PACMAN_START.y );
 
   return {
     state: 'start',
     score: 0,
     lives: 3,
-    dotsRemaining: dots,
-    powerPelletsRemaining: powerPellets,
     frightenedTimer: 0,
     ghostsEatenThisPower: 0,
     frame: 0,
     dotsEaten: 0,
-    grid,
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -67,7 +55,6 @@ function createGame() {
       frightened: false,
       eaten: false,
       respawnTimer: 0,
-      released: g.kind === 'blinky',
     } ) ),
   };
 }
@@ -79,66 +66,49 @@ function aligned( v ) {
 // Una celda es muro para el actor dado?
 //   pacman: bloqueado por pared (1) y puerta (3)
 //   ghost:  bloqueado solo por pared (1)
-function isWall( grid, x, y, actor ) {
-  if ( y < 0 || y >= grid.length ) return true;
-  if ( x < 0 || x >= grid[ 0 ].length ) return true;
-  const v = grid[ y ][ x ];
+function isWall( x, y, actor ) {
+  const v = getTile( x, y );
   if ( v === 1 ) return true;
   if ( v === 3 && actor === 'pacman' ) return true;
   return false;
 }
 
 // Puede el actor avanzar desde (x,y) en la direccion dir?
-function canMove( grid, x, y, dir, actor ) {
+function canMove( x, y, dir, actor ) {
   const d = DIRS[ dir ];
   if ( !d ) return false;
-  const tx = x + d.x;
-  const ty = y + d.y;
-  // Tunel: salir por un borde en la fila del tunel siempre es valido.
-  if ( ty === TUNNEL_ROW && ( tx < 0 || tx >= grid[ 0 ].length ) ) return true;
-  return !isWall( grid, tx, ty, actor );
+  return !isWall( x + d.x, y + d.y, actor );
 }
 
 // Elige un dir valido para un fantasma en su celda actual. Preferir preferido.
-function chooseGhostDir( grid, x, y, currentDir, preferido ) {
+function chooseGhostDir( x, y, currentDir, preferido ) {
   const candidatos = [];
-  if ( preferido && canMove( grid, x, y, preferido, 'ghost' ) ) candidatos.push( preferido );
+  if ( preferido && canMove( x, y, preferido, 'ghost' ) ) candidatos.push( preferido );
   for ( const dir of Object.keys( DIRS ) ) {
     if ( dir === preferido ) continue;
     if ( dir === OPPOSITE[ currentDir ] ) continue;
-    if ( canMove( grid, x, y, dir, 'ghost' ) ) candidatos.push( dir );
+    if ( canMove( x, y, dir, 'ghost' ) ) candidatos.push( dir );
   }
   if ( candidatos.length ) return candidatos[ 0 ];
   // Si no hay alternativa que no sea opuesto, permitir opuesto para no atascar.
   for ( const dir of Object.keys( DIRS ) ) {
     if ( dir === preferido ) continue;
-    if ( canMove( grid, x, y, dir, 'ghost' ) ) candidatos.push( dir );
+    if ( canMove( x, y, dir, 'ghost' ) ) candidatos.push( dir );
   }
   return candidatos.length ? candidatos[ 0 ] : currentDir;
 }
 
-function wrapTunnel( a, width ) {
-  if ( Math.round( a.y ) === TUNNEL_ROW ) {
-    if ( a.x < 0 ) a.x += width;
-    else if ( a.x >= width ) a.x -= width;
-  }
-}
-
 // A* pathfinding para fantasmas
 // Devuelve array de pasos {x,y} desde (sx,sy) hasta (tx,ty) o [] si no hay ruta
-function findPath( grid, sx, sy, tx, ty ) {
-  const W = grid[ 0 ].length;
-  const H = grid.length;
+function findPath( sx, sy, tx, ty ) {
   const start = sx + ',' + sy;
   const goal = tx + ',' + ty;
   if ( start === goal ) return [];
 
   const open = [ { x: sx, y: sy, g: 0, f: heuristic( sx, sy, tx, ty ), parent: null } ];
   const closed = new Set();
-  const cameFrom = new Map();
 
   while ( open.length ) {
-    // Pop nodo con menor f
     open.sort( ( a, b ) => a.f - b.f );
     const current = open.shift();
     const key = current.x + ',' + current.y;
@@ -146,7 +116,6 @@ function findPath( grid, sx, sy, tx, ty ) {
     closed.add( key );
 
     if ( current.x === tx && current.y === ty ) {
-      // Reconstruir camino
       const path = [];
       let node = current;
       while ( node.parent ) {
@@ -156,7 +125,7 @@ function findPath( grid, sx, sy, tx, ty ) {
       return path;
     }
 
-    for ( const n of neighbors( current.x, current.y, grid ) ) {
+    for ( const n of neighbors( current.x, current.y ) ) {
       const nkey = n.x + ',' + n.y;
       if ( closed.has( nkey ) ) continue;
       const g = current.g + 1;
@@ -181,24 +150,17 @@ function heuristic( ax, ay, bx, by ) {
   return Math.abs( ax - bx ) + Math.abs( ay - by );
 }
 
-// Vecinas válidas para A* (maneja túnel)
-function neighbors( x, y, grid ) {
-  const W = grid[ 0 ].length;
-  const H = grid.length;
+// Vecinas validas para A*. Solo se consideran tiles ya generados o
+// generables por el jugador; no expandir a lo desconocido lejano.
+function neighbors( x, y ) {
   const result = [];
   for ( const dir of Object.keys( DIRS ) ) {
     const d = DIRS[ dir ];
-    let nx = x + d.x;
-    let ny = y + d.y;
-    // Túnel: fila TUNNEL_ROW conecta bordes
-    if ( ny === TUNNEL_ROW && ( nx < 0 || nx >= W ) ) {
-      nx = ( nx + W ) % W;
-    }
-    if ( nx >= 0 && nx < W && ny >= 0 && ny < H ) {
-      const v = grid[ ny ][ nx ];
-      if ( v !== 1 ) { // solo pared bloquea (puerta fantasma permitida para fantasmas)
-        result.push( { x: nx, y: ny } );
-      }
+    const nx = x + d.x;
+    const ny = y + d.y;
+    const v = getTile( nx, ny );
+    if ( v !== 1 ) { // solo pared bloquea (puerta fantasma permitida para fantasmas)
+      result.push( { x: nx, y: ny } );
     }
   }
   return result;
@@ -206,40 +168,35 @@ function neighbors( x, y, grid ) {
 
 function movePacman( game ) {
   const p = game.pacman;
-  const grid = game.grid;
-  const width = grid[ 0 ].length;
 
   if ( aligned( p.x ) && aligned( p.y ) ) {
     p.x = Math.round( p.x );
     p.y = Math.round( p.y );
 
     // Aplicar giro pendiente si es posible.
-    if ( p.nextDir && canMove( grid, p.x, p.y, p.nextDir, 'pacman' ) ) {
+    if ( p.nextDir && canMove( p.x, p.y, p.nextDir, 'pacman' ) ) {
       p.dir = p.nextDir;
       p.nextDir = null;
     }
     // Comer dot.
-    if ( grid[ p.y ][ p.x ] === 2 ) {
-      grid[ p.y ][ p.x ] = 0;
+    if ( getTile( p.x, p.y ) === 2 ) {
+      setTile( p.x, p.y, 0 );
       game.score += 10;
-      game.dotsRemaining--;
       game.dotsEaten++;
     }
     // Comer power pellet.
-    if ( grid[ p.y ][ p.x ] === 4 ) {
-      grid[ p.y ][ p.x ] = 0;
+    if ( getTile( p.x, p.y ) === 4 ) {
+      setTile( p.x, p.y, 0 );
       game.score += 50;
-      game.powerPelletsRemaining--;
       startFrightenedMode( game );
     }
     // Si no puede seguir, se detiene en la celda.
-    if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
+    if ( !canMove( p.x, p.y, p.dir, 'pacman' ) ) return;
   }
 
   const d = DIRS[ p.dir ];
   p.x += d.x * p.speed;
   p.y += d.y * p.speed;
-  wrapTunnel( p, width );
 }
 
 // Inicia modo frightened: todos los fantasmas se vuelven vulnerables
@@ -255,7 +212,6 @@ function startFrightenedMode( game ) {
 }
 
 function decideGhost( game, g ) {
-  const grid = game.grid;
   const p = game.pacman;
   const gx = Math.round( g.x );
   const gy = Math.round( g.y );
@@ -265,7 +221,7 @@ function decideGhost( game, g ) {
   // Modo frightened: movimiento aleatorio, no persigue
   if ( g.frightened ) {
     const options = Object.keys( DIRS ).filter(
-      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, gx, gy, dir, 'ghost' )
+      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( gx, gy, dir, 'ghost' )
     );
     const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
     g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
@@ -283,11 +239,7 @@ function decideGhost( game, g ) {
     const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
     tx = px + pd.x * 4;
     ty = py + pd.y * 4;
-    if ( tx < 0 ) tx = 0;
-    if ( tx >= grid[ 0 ].length ) tx = grid[ 0 ].length - 1;
-    if ( ty < 0 ) ty = 0;
-    if ( ty >= grid.length ) ty = grid.length - 1;
-    if ( grid[ ty ][ tx ] === 1 || grid[ ty ][ tx ] === 3 ) {
+    if ( isWall( tx, ty, 'ghost' ) ) {
       tx = px;
       ty = py;
     }
@@ -296,27 +248,18 @@ function decideGhost( game, g ) {
     if ( blinky ) {
       const bx = Math.round( blinky.x );
       const by = Math.round( blinky.y );
-      const vx = px - bx;
-      const vy = py - by;
-      tx = px + vx;
-      ty = py + vy;
-      if ( tx < 0 ) tx = 0;
-      if ( tx >= grid[ 0 ].length ) tx = grid[ 0 ].length - 1;
-      if ( ty < 0 ) ty = 0;
-      if ( ty >= grid.length ) ty = grid.length - 1;
-      if ( grid[ ty ][ tx ] === 1 || grid[ ty ][ tx ] === 3 ) {
+      tx = px + ( px - bx );
+      ty = py + ( py - by );
+      if ( isWall( tx, ty, 'ghost' ) ) {
         tx = px;
         ty = py;
       }
     }
   } else if ( g.kind === 'clyde' ) {
     const dist = Math.abs( gx - px ) + Math.abs( gy - py );
-    if ( dist > 8 ) {
-      tx = px;
-      ty = py;
-    } else {
+    if ( dist <= 8 ) {
       const options = Object.keys( DIRS ).filter(
-        ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, gx, gy, dir, 'ghost' )
+        ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( gx, gy, dir, 'ghost' )
       );
       const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
       g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
@@ -325,7 +268,7 @@ function decideGhost( game, g ) {
   }
 
   // Usar A* para elegir dirección (chase normal)
-  const path = findPath( grid, gx, gy, tx, ty );
+  const path = findPath( gx, gy, tx, ty );
   if ( path.length > 0 ) {
     const next = path[ 0 ];
     const dx = next.x - gx;
@@ -338,7 +281,7 @@ function decideGhost( game, g ) {
     }
   } else {
     const options = Object.keys( DIRS ).filter(
-      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, gx, gy, dir, 'ghost' )
+      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( gx, gy, dir, 'ghost' )
     );
     const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
     g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
@@ -346,14 +289,10 @@ function decideGhost( game, g ) {
 }
 
 function moveGhost( game, g ) {
-  const grid = game.grid;
-  const width = grid[ 0 ].length;
-
   // Decrementar timer de frightened mode
   if ( game.frightenedTimer > 0 ) {
     game.frightenedTimer--;
     if ( game.frightenedTimer === 0 ) {
-      // Termina modo frightened: restaurar fantasmas
       for ( const gg of game.ghosts ) {
         if ( gg.frightened && !gg.eaten ) {
           gg.frightened = false;
@@ -363,73 +302,27 @@ function moveGhost( game, g ) {
     }
   }
 
-  // Fantasma comido: siempre pathfind a pen (incluso si no alineado)
+  // Fantasma comido: esperar delay y revivir en su inicio
   if ( g.eaten ) {
-    const gx = Math.round( g.x );
-    const gy = Math.round( g.y );
-    const path = findPath( grid, gx, gy, PEN_CENTER.x, PEN_CENTER.y );
-    if ( path.length > 0 ) {
-      const next = path[ 0 ];
-      for ( const dir of Object.keys( DIRS ) ) {
-        if ( DIRS[ dir ].x === next.x - gx && DIRS[ dir ].y === next.y - gy ) {
-          g.dir = dir;
-          break;
-        }
-      }
-    } else {
-      g.dir = chooseGhostDir( grid, gx, gy, g.dir, g.dir );
-    }
-    // Si llegó al centro de la pen, iniciar respawn
-    if ( gx === Math.round( PEN_CENTER.x ) && gy === Math.round( PEN_CENTER.y ) ) {
-      g.eaten = false;
-      g.respawnTimer = RESPAWN_DELAY;
-      g.x = PEN_CENTER.x;
-      g.y = PEN_CENTER.y;
-      g.speed = 0;
-      g.dir = 'up';
-    }
-  }
-
-  // Respawn: esperar quieto en el centro de la pen
-  if ( g.respawnTimer > 0 ) {
     g.respawnTimer--;
-    g.x = PEN_CENTER.x;
-    g.y = PEN_CENTER.y;
-    g.speed = 0;
-    if ( g.respawnTimer === 0 ) {
+    if ( g.respawnTimer <= 0 ) {
+      const i = GHOST_STARTS.findIndex( ( s ) => s.kind === g.kind );
+      const start = GHOST_STARTS[ i ] || GHOST_STARTS[ 0 ];
+      g.eaten = false;
       g.frightened = false;
       g.speed = GHOST_SPEED;
-      g.x = PEN_CENTER.x;
-      g.y = PEN_CENTER.y;
-      g.dir = chooseGhostDir( grid, g.x, g.y, g.dir, 'up' );
+      g.x = start.x;
+      g.y = start.y;
+      g.dir = chooseGhostDir( g.x, g.y, 'up', 'up' );
     }
-  } else if ( !g.eaten && aligned( g.x ) && aligned( g.y ) ) {
+    return;
+  }
+
+  if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
-    if ( !g.released ) {
-      // Bounce vertical dentro de la pen hasta ser liberado.
-      // La puerta (3) se trata como pared mientras no este liberado.
-      if ( g.dir !== 'up' && g.dir !== 'down' ) g.dir = 'up';
-      const d = DIRS[ g.dir ];
-      const ny = Math.round( g.y ) + d.y;
-      const nx = Math.round( g.x ) + d.x;
-      const blocked =
-        !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ||
-        ( nx >= 0 && nx < grid[ 0 ].length && ny >= 0 && ny < grid.length && grid[ ny ][ nx ] === 3 );
-      if ( blocked ) {
-        g.dir = g.dir === 'up' ? 'down' : 'up';
-        const d2 = DIRS[ g.dir ];
-        const ny2 = Math.round( g.y ) + d2.y;
-        const nx2 = Math.round( g.x ) + d2.x;
-        const blocked2 =
-          !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ||
-          ( nx2 >= 0 && nx2 < grid[ 0 ].length && ny2 >= 0 && ny2 < grid.length && grid[ ny2 ][ nx2 ] === 3 );
-        if ( blocked2 ) return;
-      }
-    } else {
-      decideGhost( game, g );
-      if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
-    }
+    decideGhost( game, g );
+    if ( !canMove( g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
   // Mantiene al fantasma sobre el centro de la celda en el eje perpendicular.
@@ -439,7 +332,7 @@ function moveGhost( game, g ) {
   // No permitir que el siguiente paso cruce una pared, aunque venga desalineado.
   const cx = Math.round( g.x );
   const cy = Math.round( g.y );
-  if ( !canMove( grid, cx, cy, g.dir, 'ghost' ) ) {
+  if ( !canMove( cx, cy, g.dir, 'ghost' ) ) {
     g.x = cx;
     g.y = cy;
     return;
@@ -448,7 +341,6 @@ function moveGhost( game, g ) {
   const d = DIRS[ g.dir ];
   g.x += d.x * g.speed;
   g.y += d.y * g.speed;
-  wrapTunnel( g, width );
 }
 
 function resetPositions( game ) {
@@ -457,7 +349,6 @@ function resetPositions( game ) {
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
-  // Terminar modo frightened al perder vida
   game.frightenedTimer = 0;
   game.ghostsEatenThisPower = 0;
   game.ghosts.forEach( ( g, i ) => {
@@ -477,25 +368,12 @@ function collides( a, b ) {
 
 function update( game ) {
   game.frame++;
-  // Liberacion de fantasmas segun tiempo / dots comidos.
-  for ( const g of game.ghosts ) {
-    if ( g.released ) continue;
-    if ( g.kind === 'pinky' && game.frame >= PINKY_RELEASE ) g.released = true;
-    else if ( g.kind === 'inky' && game.dotsEaten >= INKY_RELEASE_DOTS ) g.released = true;
-    else if ( g.kind === 'clyde' && game.dotsEaten >= CLYDE_RELEASE_DOTS ) g.released = true;
-    if ( g.released ) {
-      g.x = Math.round( g.x );
-      g.y = Math.round( g.y );
-      g.dir = chooseGhostDir( game.grid, g.x, g.y, g.dir, 'up' );
-    }
-  }
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
       if ( g.frightened && !g.eaten ) {
-        // Comer fantasma frightened
         const idx = game.ghostsEatenThisPower;
         const points = FRIGHTENED_POINTS[ Math.min( idx, FRIGHTENED_POINTS.length - 1 ) ];
         game.score += points;
@@ -503,10 +381,8 @@ function update( game ) {
         g.eaten = true;
         g.frightened = false;
         g.speed = GHOST_SPEED;
-        g.x = Math.round( g.x );
-        g.y = Math.round( g.y );
+        g.respawnTimer = RESPAWN_DELAY;
       } else if ( !g.frightened && !g.eaten ) {
-        // Colisión normal: pierde vida
         game.lives--;
         if ( game.lives <= 0 ) {
           game.state = 'lost';
@@ -517,8 +393,6 @@ function update( game ) {
       }
     }
   }
-
-  if ( game.dotsRemaining <= 0 ) game.state = 'won';
 }
 
 window.createGame = createGame;
