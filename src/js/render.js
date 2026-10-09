@@ -135,9 +135,9 @@ function drawHUD( ctx, game, W ) {
   if ( game.pacman.hasGun ) ctx.fillText( 'AMMO ' + game.pacman.ammo + ' T ' + Math.ceil( game.pacman.gunTimer / 60 ), 8, 22 );
   ctx.textAlign = 'right';
   ctx.fillText( 'VIDAS ' + game.lives, W - 8, 4 );
+  ctx.fillText( 'ZOMBIES ' + game.zombies.length, W - 8, 22 );
 }
 
-const GHOST_COLORS = [ '#ff0000', '#ffb8ff', '#00ffff', '#ffb852' ];
 
 function draw( ctx, game, frame ) {
   const w = ctx.canvas.width;
@@ -159,7 +159,7 @@ function draw( ctx, game, frame ) {
   }
 
   drawPacman( ctx, game.pacman, frame, ox, oy );
-  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000', frame, game.frightenedTimer, ox, oy ) );
+  game.zombies.forEach( ( z, i ) => drawGhost( ctx, { ...z, frightened: false, eaten: false }, '#2ecc40', frame, 0, ox, oy ) );
   // Balas
   ctx.fillStyle = '#ffff00';
   for ( const b of game.bullets ) {
