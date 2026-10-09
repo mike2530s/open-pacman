@@ -1,6 +1,6 @@
 # Spec 03 — Ghost Exit Fix + Faithful Maze
 
-**State:** Approved
+**State:** Implemented
 **Date:** 2026-10-02
 **Depends on:** SPEC 01, SPEC 02
 **Objective:** Replace the malformed `MAZE_STR` with the faithful 28x31 level-1 Pac-Man layout so ghosts can actually leave the pen and walls connect correctly, and fix ghost release/respawn so they exit the pen onto the map and eaten ghosts return as eyes instead of teleporting.
