@@ -417,7 +417,8 @@ function useCross( game ) {
   const d = DIRS[ p.dir ];
   let x = Math.round( p.x ) + d.x;
   let y = Math.round( p.y ) + d.y;
-  while ( !isWall( x, y, 'ghost' ) ) {
+  const MAX_RANGE = 20; // ponytail: laberinto infinito, sin límite el loop no termina
+  for ( let step = 0; step < MAX_RANGE && !isWall( x, y, 'ghost' ); step++ ) {
     for ( let i = game.ghosts.length - 1; i >= 0; i-- ) {
       const gh = game.ghosts[ i ];
       if ( Math.abs( gh.x - x ) < 0.5 && Math.abs( gh.y - y ) < 0.5 ) {
