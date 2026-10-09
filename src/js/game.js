@@ -94,6 +94,7 @@ function findPath( grid, sx, sy, tx, ty ) {
   const cameFrom = new Map();
 
   while ( open.length ) {
+    // Pop nodo con menor f
     open.sort( ( a, b ) => a.f - b.f );
     const current = open.shift();
     const key = current.x + ',' + current.y;
@@ -101,6 +102,7 @@ function findPath( grid, sx, sy, tx, ty ) {
     closed.add( key );
 
     if ( current.x === tx && current.y === ty ) {
+      // Reconstruir camino
       const path = [];
       let node = current;
       while ( node.parent ) {
@@ -128,7 +130,7 @@ function findPath( grid, sx, sy, tx, ty ) {
       }
     }
   }
-  return [];
+  return []; // sin ruta
 }
 
 function heuristic( ax, ay, bx, by ) {
@@ -144,12 +146,13 @@ function neighbors( x, y, grid ) {
     const d = DIRS[ dir ];
     let nx = x + d.x;
     let ny = y + d.y;
+    // Túnel: fila TUNNEL_ROW conecta bordes
     if ( ny === TUNNEL_ROW && ( nx < 0 || nx >= W ) ) {
       nx = ( nx + W ) % W;
     }
     if ( nx >= 0 && nx < W && ny >= 0 && ny < H ) {
       const v = grid[ ny ][ nx ];
-      if ( v !== 1 && v !== 3 ) {
+      if ( v !== 1 && v !== 3 ) { // no pared, no puerta fantasma
         result.push( { x: nx, y: ny } );
       }
     }
@@ -190,30 +193,89 @@ function movePacman( game ) {
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
+  const gx = Math.round( g.x );
+  const gy = Math.round( g.y );
+  const px = Math.round( p.x );
+  const py = Math.round( p.y );
 
-  const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
-  );
-  // Sin salida (callejon): permitir el giro de 180.
-  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+  // Calcular target según tipo de fantasma
+  let tx = px;
+  let ty = py;
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
+  if ( g.kind === 'blinky' ) {
+    // Blinky: persigue directamente a Pac-Man
+    tx = px;
+    ty = py;
+  } else if ( g.kind === 'pinky' ) {
+    // Pinky: embosca 4 tiles por delante de Pac-Man
+    const pd = DIRS[ p.dir ] || { x: 0, y: 0 };
+    tx = px + pd.x * 4;
+    ty = py + pd.y * 4;
+    // Clampear a límites válidos
+    if ( tx < 0 ) tx = 0;
+    if ( tx >= grid[ 0 ].length ) tx = grid[ 0 ].length - 1;
+    if ( ty < 0 ) ty = 0;
+    if ( ty >= grid.length ) ty = grid.length - 1;
+    // Si target cae en pared, fallback a posición de Pac-Man
+    if ( grid[ ty ][ tx ] === 1 || grid[ ty ][ tx ] === 3 ) {
+      tx = px;
+      ty = py;
+    }
+  } else if ( g.kind === 'inky' ) {
+    // Inky: vector desde Blinky a Pac-Man, doblado
+    const blinky = game.ghosts.find( ( gg ) => gg.kind === 'blinky' );
+    if ( blinky ) {
+      const bx = Math.round( blinky.x );
+      const by = Math.round( blinky.y );
+      const vx = px - bx;
+      const vy = py - by;
+      tx = px + vx;
+      ty = py + vy;
+      // Clampear
+      if ( tx < 0 ) tx = 0;
+      if ( tx >= grid[ 0 ].length ) tx = grid[ 0 ].length - 1;
+      if ( ty < 0 ) ty = 0;
+      if ( ty >= grid.length ) ty = grid.length - 1;
+      if ( grid[ ty ][ tx ] === 1 || grid[ ty ][ tx ] === 3 ) {
+        tx = px;
+        ty = py;
       }
     }
-    g.dir = best;
+  } else if ( g.kind === 'clyde' ) {
+    // Clyde: persigue si lejos (>8 tiles), sino aleatorio
+    const dist = Math.abs( gx - px ) + Math.abs( gy - py );
+    if ( dist > 8 ) {
+      tx = px;
+      ty = py;
+    } else {
+      // Aleatorio: elegir dirección válida al azar
+      const options = Object.keys( DIRS ).filter(
+        ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, gx, gy, dir, 'ghost' )
+      );
+      const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+      g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+      return;
+    }
+  }
+
+  // Para blinky, pinky, inky, clyde (cuando persigue): usar A* para elegir dirección
+  const path = findPath( grid, gx, gy, tx, ty );
+  if ( path.length > 0 ) {
+    const next = path[ 0 ];
+    const dx = next.x - gx;
+    const dy = next.y - gy;
+    for ( const dir of Object.keys( DIRS ) ) {
+      if ( DIRS[ dir ].x === dx && DIRS[ dir ].y === dy ) {
+        g.dir = dir;
+        break;
+      }
+    }
   } else {
+    // Sin ruta: fallback a comportamiento anterior (evitar reversa)
+    const options = Object.keys( DIRS ).filter(
+      ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, gx, gy, dir, 'ghost' )
+    );
+    const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
     g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
 }
