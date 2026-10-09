@@ -30,6 +30,9 @@ const GHOST_STARTS = [
 function createGame() {
   // Asegurar que existe el chunk de inicio (genera al empezar).
   getTile( PACMAN_START.x, PACMAN_START.y );
+  // Limpiar celdas de spawn: nunca deben ser bloque ni dot
+  setTile( PACMAN_START.x, PACMAN_START.y, 0 );
+  for ( const g of GHOST_STARTS ) setTile( g.x, g.y, 0 );
 
   return {
     state: 'start',
@@ -39,13 +42,18 @@ function createGame() {
     ghostsEatenThisPower: 0,
     frame: 0,
     dotsEaten: 0,
+    powerPelletsEaten: 0,
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
       dir: 'left',
       nextDir: null,
       speed: PACMAN_SPEED,
+      hasGun: false,
+      ammo: 0,
+      gunTimer: 0,
     },
+    bullets: [],
     ghosts: GHOST_STARTS.map( ( g ) => ( {
       x: g.x,
       y: g.y,
@@ -69,6 +77,7 @@ function aligned( v ) {
 function isWall( x, y, actor ) {
   const v = getTile( x, y );
   if ( v === 1 ) return true;
+  if ( v === 5 ) return true; // bloque destructible bloquea paso hasta romperse
   if ( v === 3 && actor === 'pacman' ) return true;
   return false;
 }
@@ -159,7 +168,7 @@ function neighbors( x, y ) {
     const nx = x + d.x;
     const ny = y + d.y;
     const v = getTile( nx, ny );
-    if ( v !== 1 ) { // solo pared bloquea (puerta fantasma permitida para fantasmas)
+    if ( v !== 1 && v !== 5 ) { // solo pared/bloque bloquean
       result.push( { x: nx, y: ny } );
     }
   }
@@ -188,7 +197,12 @@ function movePacman( game ) {
     if ( getTile( p.x, p.y ) === 4 ) {
       setTile( p.x, p.y, 0 );
       game.score += 50;
+      game.powerPelletsEaten++;
       startFrightenedMode( game );
+      // Arma: recarga munición y reinicia timer
+      p.hasGun = true;
+      p.ammo += 15;
+      p.gunTimer = 8 * 60; // 8s @60fps
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -362,6 +376,68 @@ function resetPositions( game ) {
   } );
 }
 
+// Dispara una bala desde Pacman en su direccion actual.
+function fireBullet( game ) {
+  const p = game.pacman;
+  if ( !p.hasGun || p.ammo <= 0 ) return;
+  const d = DIRS[ p.dir ];
+  p.ammo--;
+  game.bullets.push( {
+    x: p.x + d.x * 0.5,
+    y: p.y + d.y * 0.5,
+    vx: d.x * PACMAN_SPEED * 2,
+    vy: d.y * PACMAN_SPEED * 2,
+    radius: 0.2,
+  } );
+}
+
+// Avanza balas, colision tiles y enemigos.
+function updateBullets( game ) {
+  const p = game.pacman;
+  if ( p.gunTimer > 0 ) {
+    p.gunTimer--;
+    if ( p.gunTimer === 0 ) p.ammo = 0;
+  }
+  for ( let i = game.bullets.length - 1; i >= 0; i-- ) {
+    const b = game.bullets[ i ];
+    b.x += b.vx;
+    b.y += b.vy;
+    const tx = Math.round( b.x );
+    const ty = Math.round( b.y );
+    const v = getTile( tx, ty );
+    if ( v === 1 ) {
+      game.bullets.splice( i, 1 );
+      continue;
+    }
+    if ( v === 5 ) {
+      setTile( tx, ty, 0 );
+      game.bullets.splice( i, 1 );
+      continue;
+    }
+    // Colisión con fantasmas (placeholder de zombies)
+    let hit = false;
+    for ( const g of game.ghosts ) {
+      if ( !g.eaten && Math.abs( g.x - b.x ) < 0.5 && Math.abs( g.y - b.y ) < 0.5 ) {
+        game.score += 200;
+        g.eaten = true;
+        g.frightened = false;
+        g.speed = GHOST_SPEED;
+        g.respawnTimer = RESPAWN_DELAY;
+        hit = true;
+        break;
+      }
+    }
+    if ( hit ) {
+      game.bullets.splice( i, 1 );
+      continue;
+    }
+    // Fuera de rango razonable: descartar si se aleja mucho del jugador
+    if ( Math.abs( b.x - p.x ) > 40 || Math.abs( b.y - p.y ) > 40 ) {
+      game.bullets.splice( i, 1 );
+    }
+  }
+}
+
 function collides( a, b ) {
   return Math.abs( a.x - b.x ) < 0.5 && Math.abs( a.y - b.y ) < 0.5;
 }
@@ -370,6 +446,7 @@ function update( game ) {
   game.frame++;
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
+  updateBullets( game );
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
@@ -397,4 +474,6 @@ function update( game ) {
 
 window.createGame = createGame;
 window.update = update;
+window.fireBullet = fireBullet;
+window.updateBullets = updateBullets;
 window.DIRS = DIRS;
