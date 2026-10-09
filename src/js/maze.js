@@ -72,13 +72,11 @@ function generateChunk( cx, cy ) {
     grid[ mid ][ CHUNK - 1 - i ] = 0;  // derecha -> centro
   }
 
-  // Dots y pellets sobre suelo (valor 0 -> 2 / 4); bloques destructibles 5
+  // Dots y pellets sobre suelo (valor 0 -> 2 / 4)
   for ( let yy = 0; yy < CHUNK; yy++ ) {
     for ( let xx = 0; xx < CHUNK; xx++ ) {
       if ( grid[ yy ][ xx ] !== 0 ) continue;
-      const r = rng();
-      if ( r < 0.35 ) grid[ yy ][ xx ] = 5;        // bloque destructible
-      else if ( r < 0.35 + 0.5 ) grid[ yy ][ xx ] = 2; // dot
+      grid[ yy ][ xx ] = rng() < 0.8 ? 2 : 0;
     }
   }
   if ( rng() < 0.5 ) {
@@ -88,6 +86,17 @@ function generateChunk( cx, cy ) {
       const py = 1 + ( ( rng() * ( CHUNK - 2 ) ) | 0 );
       if ( grid[ py ][ px ] === 2 || grid[ py ][ px ] === 0 ) {
         grid[ py ][ px ] = 4;
+        break;
+      }
+    }
+  }
+  // Cruz (item, tile 6) con probabilidad 30% por chunk
+  if ( rng() < 0.3 ) {
+    for ( let tries = 0; tries < 20; tries++ ) {
+      const px = 1 + ( ( rng() * ( CHUNK - 2 ) ) | 0 );
+      const py = 1 + ( ( rng() * ( CHUNK - 2 ) ) | 0 );
+      if ( grid[ py ][ px ] === 2 || grid[ py ][ px ] === 0 ) {
+        grid[ py ][ px ] = 6;
         break;
       }
     }
