@@ -1,104 +1,104 @@
-# Spec 02 — Power Pellets & Frightened Mode
+# Spec 02 — Pellets de Poder y Modo Asustado
 
-**State:** Implemented
-**Date:** 2026-10-02
-**Objective:** Add 4 power pellets at maze corners; eating one makes ghosts frightened (blue, slower, random movement) for a timer, awarding escalating points (200/400/800/1600) per ghost eaten.
+**Estado:** Implementado
+**Fecha:** 2026-10-02
+**Objetivo:** Agregar 4 pellets de poder en las esquinas del laberinto; comerlos pone a los fantasmas en modo asustado (azules, más lentos, movimiento aleatorio) durante un temporizador, otorgando puntos escalables (200/400/800/1600) por cada fantasma comido.
 
-## Scope
+## Alcance
 
-**In:**
-- 4 power pellets at maze corners (positions in `maze.js`)
-- New tile type: power pellet (value 4 in grid)
-- Ghost frightened state: blue color, reduced speed, random movement
-- Frightened timer (configurable, e.g., 7 seconds at 60fps = ~420 frames)
-- Escalating points: 1st ghost=200, 2nd=400, 3rd=800, 4th=1600 (resets per power pellet)
-- Ghosts flash white when timer < 2s (warning)
-- Eaten ghosts return to pen (eyes only), respawn after delay
-- Power pellets persist in `game.grid` (mutated when eaten)
+**Incluido:**
+- 4 pellets de poder en las esquinas del laberinto (posiciones en `maze.js`)
+- Nuevo tipo de casilla: pellet de poder (valor 4 en la grilla)
+- Estado asustado del fantasma: color azul, velocidad reducida, movimiento aleatorio
+- Temporizador de modo asustado (configurable, ej. 7 segundos a 60fps = ~420 frames)
+- Puntos escalables: 1er fantasma=200, 2do=400, 3ro=800, 4to=1600 (se reinicia por pellet de poder)
+- Fantasmas parpadean en blanco cuando el temporizador < 2s (advertencia)
+- Fantasmas comidos regresan a la jaula (solo ojos), reaparecen tras un retraso
+- Los pellets de poder persisten en `game.grid` (se mutan al ser comidos)
 
-**Not in:**
-- Cutscene/intermission when all ghosts eaten
-- Multiple power pellets active simultaneously (only one timer)
-- Fruit bonuses
-- High score persistence
+**No incluido:**
+- Escena/intermisión cuando todos los fantasmas son comidos
+- Múltiples pellets de poder activos simultáneamente (solo un temporizador)
+- Frutas/bonificaciones
+- Persistencia de puntaje máximo
 
-## Data Model
+## Modelo de Datos
 
-### Maze additions (`maze.js`)
+### Adiciones al laberinto (`maze.js`)
 ```js
-// Tile values: 0=empty, 1=wall, 2=dot, 3=ghost-door, 4=power-pellet
+// Valores de casilla: 0=vacío, 1=pared, 2=punto, 3=puerta fantasma, 4=pellet de poder
 const POWER_PELLET_POSITIONS = [
-  { x: 1, y: 1 },      // top-left
-  { x: 26, y: 1 },     // top-right
-  { x: 1, y: 29 },     // bottom-left
-  { x: 26, y: 29 },    // bottom-right
+  { x: 1, y: 1 },      // superior-izquierda
+  { x: 26, y: 1 },     // superior-derecha
+  { x: 1, y: 29 },     // inferior-izquierda
+  { x: 26, y: 29 },    // inferior-derecha
 ];
 ```
 
-### Game state additions (`game.js` createGame)
+### Adiciones al estado del juego (`game.js` createGame)
 ```js
 return {
-  // ...existing fields
+  // ...campos existentes
   powerPelletsRemaining: 4,
   frightenedTimer: 0,
-  ghostsEatenThisPower: 0,  // for escalating points
+  ghostsEatenThisPower: 0,  // para puntos escalables
 };
 ```
 
-### Ghost runtime additions
+### Adiciones al estado de ejecución del fantasma
 ```js
 ghosts: GHOST_STARTS.map( ( g ) => ( {
-  // ...existing
+  // ...existente
   frightened: false,
   eaten: false,
   respawnTimer: 0,
 } ) ),
 ```
 
-### Constants (`game.js`)
+### Constantes (`game.js`)
 ```js
 const FRIGHTENED_DURATION = 420;  // frames @ 60fps = 7s
-const FRIGHTENED_SPEED = 0.05;    // half normal speed
-const FLASH_THRESHOLD = 120;      // frames < 2s = flash
+const FRIGHTENED_SPEED = 0.05;    // mitad de velocidad normal
+const FLASH_THRESHOLD = 120;      // frames < 2s = parpadeo
 const FRIGHTENED_POINTS = [200, 400, 800, 1600];
-const RESPAWN_DELAY = 120;        // frames before ghost leaves pen
+const RESPAWN_DELAY = 120;        // frames antes de que el fantasma salga de la jaula
 ```
 
-## Implementation Plan
+## Plan de Implementación
 
-1. **Update `maze.js`**: Add power pellet tile value (4), parse in `MAZE_STR`, add `POWER_PELLET_POSITIONS` constant, initialize in `MAZE`.
-2. **Update `game.js` constants**: Add `FRIGHTENED_DURATION`, `FRIGHTENED_SPEED`, `FLASH_THRESHOLD`, `FRIGHTENED_POINTS`, `RESPAWN_DELAY`.
-3. **Update `createGame()`**: Initialize `powerPelletsRemaining`, `frightenedTimer`, `ghostsEatenThisPower`; add `frightened`, `eaten`, `respawnTimer` to each ghost.
-4. **Update `movePacman()`**: Detect eating power pellet (grid value 4) → start frightened mode, reset `ghostsEatenThisPower`.
-5. **Add `startFrightenedMode(game)`**: Set `frightenedTimer = FRIGHTENED_DURATION`, set all ghosts `frightened=true`, `speed=FRIGHTENED_SPEED`.
-6. **Update `decideGhost()`**: If `g.frightened` → random valid direction (no A*); if `g.eaten` → move toward pen (A* to pen center), then respawn.
-7. **Update `moveGhost()`**: Handle `frightened` timer countdown; flash logic; handle `eaten` state (eyes only, return to pen).
-8. **Update collision in `update()`**: If `g.frightened` and not `g.eaten` → eat ghost: score += `FRIGHTENED_POINTS[ghostsEatenThisPower]`, `ghostsEatenThisPower++`, `g.eaten=true`, `g.frightened=false`, `g.speed=GHOST_SPEED`, `g.respawnTimer=RESPAWN_DELAY`.
-9. **Update `render.js`**: Draw power pellets (larger, flashing); draw frightened ghosts (blue body, white flash near end); draw eaten ghosts (eyes only).
-10. **Update `resetPositions()`**: Reset `frightened`, `eaten`, `respawnTimer` on life loss.
+1. **Actualizar `maze.js`**: Agregar valor de casilla para pellet de poder (4), parsear en `MAZE_STR`, agregar constante `POWER_PELLET_POSITIONS`, inicializar en `MAZE`.
+2. **Actualizar constantes de `game.js`**: Agregar `FRIGHTENED_DURATION`, `FRIGHTENED_SPEED`, `FLASH_THRESHOLD`, `FRIGHTENED_POINTS`, `RESPAWN_DELAY`.
+3. **Actualizar `createGame()`**: Inicializar `powerPelletsRemaining`, `frightenedTimer`, `ghostsEatenThisPower`; agregar `frightened`, `eaten`, `respawnTimer` a cada fantasma.
+4. **Actualizar `movePacman()`**: Detectar comida de pellet de poder (valor de grilla 4) → iniciar modo asustado, reiniciar `ghostsEatenThisPower`.
+5. **Agregar `startFrightenedMode(game)`**: Establecer `frightenedTimer = FRIGHTENED_DURATION`, poner todos los fantasmas `frightened=true`, `speed=FRIGHTENED_SPEED`.
+6. **Actualizar `decideGhost()`**: Si `g.frightened` → dirección válida aleatoria (sin A*); si `g.eaten` → moverse hacia la jaula (A* al centro de la jaula), luego reaparecer.
+7. **Actualizar `moveGhost()`**: Manejar cuenta regresiva del temporizador `frightened`; lógica de parpadeo; manejar estado `eaten` (solo ojos, regresar a jaula).
+8. **Actualizar colisión en `update()`**: Si `g.frightened` y no `g.eaten` → comer fantasma: score += `FRIGHTENED_POINTS[ghostsEatenThisPower]`, `ghostsEatenThisPower++`, `g.eaten=true`, `g.frightened=false`, `g.speed=GHOST_SPEED`, `g.respawnTimer=RESPAWN_DELAY`.
+9. **Actualizar `render.js`**: Dibujar pellets de poder (más grandes, parpadeantes); dibujar fantasmas asustados (cuerpo azul, parpadeo blanco al final); dibujar fantasmas comidos (solo ojos).
+10. **Actualizar `resetPositions()`**: Reiniciar `frightened`, `eaten`, `respawnTimer` al perder una vida.
 
-## Acceptance Criteria
+## Criterios de Aceptación
 
-- [ ] 4 power pellets visible at maze corners (larger, flashing)
-- [ ] Eating power pellet triggers frightened mode (all 4 ghosts)
-- [ ] Frightened ghosts: blue, slower, random movement
-- [ ] Ghosts flash white when <2s remaining
-- [ ] Eating frightened ghost: awards 200→400→800→1600, ghost becomes eyes-only
-- [ ] Eaten ghost returns to pen, respawns after delay
-- [ ] Frightened mode ends after timer → ghosts resume normal behavior
-- [ ] No console errors; 60fps maintained
+- [ ] 4 pellets de poder visibles en las esquinas del laberinto (más grandes, parpadeantes)
+- [ ] Comer pellet de poder activa modo asustado (los 4 fantasmas)
+- [ ] Fantasmas asustados: azules, más lentos, movimiento aleatorio
+- [ ] Fantasmas parpadean en blanco cuando quedan <2s
+- [ ] Comer fantasma asustado: otorga 200→400→800→1600, fantasma queda solo con ojos
+- [ ] Fantasma comido regresa a la jaula, reaparece tras el retraso
+- [ ] Modo asustado termina al acabar el temporizador → fantasmas retoman comportamiento normal
+- [ ] Sin errores de consola; 60fps mantenidos
 
-## Decisions Taken and Discarded
+## Decisiones Tomadas y Descartadas
 
-- **Decision**: 4 power pellets at fixed corners. *Reason*: User chose "esquinas (original)".
-- **Decision**: Full frightened behavior (blue, slow, random, flash, eyes return). *Reason*: User chose "fantasmas azules, velocidad reducida, movimiento aleatorio".
-- **Decision**: Escalating points 200/400/800/1600 per power pellet. *Reason*: User chose "timer configurable + puntos escalonados".
-- **Decision**: Single frightened timer (no stacking). *Reason*: Simpler, matches original behavior.
-- **Discarded**: Fruit bonuses, high scores, cutscenes. *Reason*: Out of scope.
+- **Decisión**: 4 pellets de poder en esquinas fijas. *Razón*: El usuario eligió "esquinas (original)".
+- **Decisión**: Comportamiento asustado completo (azul, lento, aleatorio, parpadeo, ojos regresan). *Razón*: El usuario eligió "fantasmas azules, velocidad reducida, movimiento aleatorio".
+- **Decisión**: Puntos escalables 200/400/800/1600 por pellet de poder. *Razón*: El usuario eligió "timer configurable + puntos escalonados".
+- **Decisión**: Temporizador único de modo asustado (sin acumulación). *Razón*: Más simple, coincide con el comportamiento original.
+- **Descartado**: Frutas, puntajes máximos, escenas. *Razón*: Fuera de alcance.
 
-## Identified Risks
+## Riesgos Identificados
 
-- **Ghost respawn logic**: Eyes returning to pen needs A* pathfinding to pen center; verify no infinite loops.
-- **Flash timing**: Frame-based timer must sync with 60fps; test at different frame rates.
-- **Power pellet rendering**: Must distinguish from dots visually (larger, pulsing).
-- **State conflicts**: Ghost can't be both frightened and eaten; ensure mutually exclusive.
+- **Lógica de reaparición del fantasma**: Los ojos que regresan a la jaula necesitan pathfinding A* al centro de la jaula; verificar que no haya bucles infinitos.
+- **Sincronización del parpadeo**: El temporizador basado en frames debe sincronizarse a 60fps; probar a diferentes velocidades de frame.
+- **Renderizado de pellets de poder**: Deben distinguirse visualmente de los puntos (más grandes, pulsantes).
+- **Conflictos de estado**: Un fantasma no puede estar asustado y comido al mismo tiempo; asegurar que sean mutuamente excluyentes.

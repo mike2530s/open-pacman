@@ -1,27 +1,27 @@
-# Spec 05 — Projectiles & Ammo Power Pellets
+# Spec 05 — Proyectiles y Pellets de Poder como Munición
 
-**State:** Implemented
-**Date:** 2026-10-06
-**Objective:** Add shooting: Space fires bullets from Pac-Man; power pellets grant ammo/gun time; bullets break destructible tiles and kill enemies.
+**Estado:** Implementado
+**Fecha:** 2026-10-06
+**Objetivo:** Agregar disparos: Espacio dispara balas desde Pac-Man; los pellets de poder otorgan munición/tiempo de arma; las balas rompen casillas destructibles y matan enemigos.
 
-## Scope
+## Alcance
 
-**In:**
-- `Space` key in `main.js` keydown → fire single bullet per press
-- Player fields: `hasGun`, `ammo`, `gunTimer`
-- Power pellet pickup: `ammo += 15` or `gunTimer = 8.0`
-- `bullets = []`; bullet `{x, y, vx, vy, radius: 0.2}`; speed 2x player
-- Bullet update: move, die on tile `1`, break tile `5` → `0` (via `setTile`)
-- Bullet vs enemy: `d < 0.5` kills zombie, +score
-- HUD: ammo / gunTimer remaining
-- New tile `5` = destructible block, generated in `generateChunk` (distinct color from wall `1`). Tile `2` stays dot, `4` stays power pellet (now also gives ammo).
+**Incluido:**
+- Tecla `Space` en `main.js` keydown → disparar una bala por pulsación
+- Campos del jugador: `hasGun`, `ammo`, `gunTimer`
+- Recogida de pellet de poder: `ammo += 15` o `gunTimer = 8.0`
+- `bullets = []`; bala `{x, y, vx, vy, radius: 0.2}`; velocidad 2x la del jugador
+- Actualización de bala: moverse, morir en casilla `1`, romper casilla `5` → `0` (vía `setTile`)
+- Bala vs enemigo: `d < 0.5` mata zombie, +puntuación
+- HUD: munición / tiempo de arma restante
+- Nueva casilla `5` = bloque destructible, generado en `generateChunk` (color distinto a pared `1`). Casilla `2` sigue siendo punto, `4` sigue siendo pellet de poder (ahora también da munición).
 
-**Not in:**
-- Explosions/bombs
-- Spread/multishot
-- Enemy bullets
+**No incluido:**
+- Explosiones/bombas
+- Dispersión/disparo múltiple
+- Balas enemigas
 
-## Data Model
+## Modelo de Datos
 
 ```js
 game.bullets = [];
@@ -29,10 +29,10 @@ game.pacman.ammo = 0;
 game.pacman.gunTimer = 0;
 ```
 
-## Implementation Plan
+## Plan de Implementación
 
-1. **main.js**: Space handler with preventDefault.
-2. **game.js**: `fireBullet(game)`; bullet loop in `update`; tile collision via `getTile`/`setTile`; enemy collision; ammo/timer decrement.
-3. **maze.js**: `generateChunk` sprinkles tile `5` destructible blocks on floor cells.
-4. **render.js**: draw bullets as small arcs; tile `5` color; HUD ammo.
-5. Win/lose unchanged.
+1. **main.js**: manejador de Space con preventDefault.
+2. **game.js**: `fireBullet(game)`; loop de balas en `update`; colisión con casillas vía `getTile`/`setTile`; colisión con enemigos; decremento de munición/temporizador.
+3. **maze.js**: `generateChunk` esparce casillas `5` de bloques destructibles en celdas del piso.
+4. **render.js**: dibujar balas como arcos pequeños; color de casilla `5`; munición en HUD.
+5. Condición de victoria/derrota sin cambios.

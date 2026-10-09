@@ -1,87 +1,87 @@
-# Spec 01 — Four Ghosts with Classic Behaviors
+# Spec 01 — Cuatro Fantasmas con Comportamientos Clásicos
 
-**State:** Implemented
-**Date:** 2026-10-02
-**Objective:** Implement 4 ghosts (Blinky, Pinky, Inky, Clyde) each with distinct classic Pac-Man behavior, using real pathfinding for Blinky.
+**Estado:** Implementado
+**Fecha:** 2026-10-02
+**Objetivo:** Implementar 4 fantasmas (Blinky, Pinky, Inky, Clyde) cada uno con comportamiento clásico de Pac-Man distinto, usando pathfinding real para Blinky.
 
-## Scope
+## Alcance
 
-**In:**
-- 4 ghosts with fixed behaviors: Blinky (chase via A*), Pinky (ambush 4 tiles ahead), Inky (mirror of Blinky relative to Pinky), Clyde (chase far, random near)
-- Real A* pathfinding recalculated every frame for Blinky
-- Dispersed starting positions across the maze (not all in pen)
-- Ghost types defined in `maze.js` with unique names and behaviors
-- `decideGhost()` in `game.js` extended to handle 4 behavior types
+**Incluido:**
+- 4 fantasmas con comportamientos fijos: Blinky (persecución vía A*), Pinky (emboscada 4 casillas adelante), Inky (espejo de Blinky relativo a Pinky), Clyde (persigue lejos, aleatorio cerca)
+- Pathfinding A* real recalculado cada frame para Blinky
+- Posiciones de inicio dispersas en el laberinto (no todos en la jaula)
+- Tipos de fantasma definidos en `maze.js` con nombres y comportamientos únicos
+- `decideGhost()` en `game.js` extendido para manejar 4 tipos de comportamiento
 
-**Not in:**
-- Chase/scatter/frightened mode switching
-- Power pellets or vulnerable ghost state
-- Ghost house/pen release logic
-- Ghost eyes returning to pen when eaten
-- Intermission animations or cutscenes
+**No incluido:**
+- Cambio de modos persecución/dispersión/asustado
+- Pellets de poder o estado vulnerable de fantasmas
+- Lógica de jaula/liberación de fantasmas
+- Ojos de fantasmas regresando a la jaula al ser comidos
+- Animaciones de intermisión o escenas
 
-## Data Model
+## Modelo de Datos
 
-### Ghost definition (in `maze.js`)
+### Definición de fantasma (en `maze.js`)
 ```js
 const GHOST_STARTS = [
-  { x: 13, y: 11, kind: 'blinky' },  // Blinky: top area
-  { x: 14, y: 11, kind: 'pinky' },   // Pinky: top area
-  { x: 13, y: 14, kind: 'inky' },    // Inky: pen area
-  { x: 14, y: 14, kind: 'clyde' },   // Clyde: pen area
+  { x: 13, y: 11, kind: 'blinky' },  // Blinky: zona superior
+  { x: 14, y: 11, kind: 'pinky' },   // Pinky: zona superior
+  { x: 13, y: 14, kind: 'inky' },    // Inky: zona jaula
+  { x: 14, y: 14, kind: 'clyde' },   // Clyde: zona jaula
 ];
 ```
 
-### Ghost runtime state (in `game.js` createGame)
-Each ghost gets:
+### Estado de ejecución del fantasma (en `game.js` createGame)
+Cada fantasma tiene:
 - `kind: 'blinky' | 'pinky' | 'inky' | 'clyde'`
-- `targetX, targetY` — current chase target (for pathfinding/ambush logic)
-- `path: Array<{x,y}>` — computed A* path (Blinky only)
+- `targetX, targetY` — objetivo de persecución actual (para lógica de pathfinding/emboscada)
+- `path: Array<{x,y}>` — ruta A* calculada (solo Blinky)
 
-### Pathfinding helper (new in `game.js` or separate util)
-- `findPath(grid, fromX, fromY, toX, toY)` → `Array<{x,y}>` using A* with Manhattan heuristic
-- Considers walls (1) and ghost-door (3) as blocked
-- Handles tunnel wrap at `TUNNEL_ROW`
+### Auxiliar de pathfinding (nuevo en `game.js` o util separado)
+- `findPath(grid, fromX, fromY, toX, toY)` → `Array<{x,y}>` usando A* con heurística Manhattan
+- Considera paredes (1) y puerta fantasma (3) como bloqueadas
+- Maneja wrap de túnel en `TUNNEL_ROW`
 
-## Implementation Plan
+## Plan de Implementación
 
-1. **Update `maze.js`**: Replace `GHOST_STARTS` with 4 dispersed positions and kinds (blinky, pinky, inky, clyde).
-2. **Add A* pathfinding** in `game.js`:
-   - `neighbors(x, y, grid)` — valid adjacent cells (handles tunnel)
-   - `heuristic(ax, ay, bx, by)` — Manhattan distance
-   - `findPath(grid, sx, sy, tx, ty)` — returns array of {x,y} steps
-3. **Extend `decideGhost(game, ghost)`** in `game.js` for 4 kinds:
-   - **Blinky**: target = Pac-Man position; compute A* path every frame; take first step
-   - **Pinky**: target = Pac-Man position + 4 tiles in Pac-Man's facing direction; compute A* path; take first step
-   - **Inky**: vector from Blinky to Pac-Man, doubled; target = that position; compute A* path; take first step (needs Blinky reference)
-   - **Clyde**: if distance to Pac-Man > 8 tiles → chase like Blinky; else → random valid direction
-4. **Update `createGame()`** in `game.js`: initialize 4 ghosts with new kinds and positions.
-5. **Update `resetPositions()`** in `game.js`: restore all 4 to their `GHOST_STARTS` positions.
-6. **Verify rendering** in `render.js`: `GHOST_COLORS` array has 4 entries (already: red, cyan, pink, orange).
+1. **Actualizar `maze.js`**: Reemplazar `GHOST_STARTS` con 4 posiciones dispersas y tipos (blinky, pinky, inky, clyde).
+2. **Agregar pathfinding A*** en `game.js`:
+   - `neighbors(x, y, grid)` — celdas adyacentes válidas (maneja túnel)
+   - `heuristic(ax, ay, bx, by)` — distancia Manhattan
+   - `findPath(grid, sx, sy, tx, ty)` — retorna array de pasos {x,y}
+3. **Extender `decideGhost(game, ghost)`** en `game.js` para 4 tipos:
+   - **Blinky**: objetivo = posición de Pac-Man; calcular ruta A* cada frame; tomar primer paso
+   - **Pinky**: objetivo = posición de Pac-Man + 4 casillas en la dirección que mira Pac-Man; calcular ruta A*; tomar primer paso
+   - **Inky**: vector de Blinky a Pac-Man, duplicado; objetivo = esa posición; calcular ruta A*; tomar primer paso (necesita referencia a Blinky)
+   - **Clyde**: si distancia a Pac-Man > 8 casillas → perseguir como Blinky; si no → dirección válida aleatoria
+4. **Actualizar `createGame()`** en `game.js`: inicializar 4 fantasmas con nuevos tipos y posiciones.
+5. **Actualizar `resetPositions()`** en `game.js`: restaurar los 4 a sus posiciones `GHOST_STARTS`.
+6. **Verificar rendering** en `render.js`: el array `GHOST_COLORS` tiene 4 entradas (ya existentes: rojo, cyan, rosa, naranja).
 
-## Acceptance Criteria
+## Criterios de Aceptación
 
-- [ ] Game starts with 4 ghosts at dispersed positions
-- [ ] Blinky follows Pac-Man using A* pathfinding (visible optimal routing around walls)
-- [ ] Pinky targets 4 tiles ahead of Pac-Man's facing direction
-- [ ] Inky targets mirrored position relative to Blinky
-- [ ] Clyde chases when far (>8 tiles), moves randomly when close
-- [ ] All 4 ghosts render with distinct colors (red, cyan, pink, orange)
-- [ ] Collision with any ghost loses a life, resets all 4 positions
-- [ ] No console errors; 60fps maintained on typical hardware
+- [ ] El juego inicia con 4 fantasmas en posiciones dispersas
+- [ ] Blinky sigue a Pac-Man usando pathfinding A* (enrutamiento óptimo visible alrededor de paredes)
+- [ ] Pinky apunta 4 casillas adelante de la dirección que mira Pac-Man
+- [ ] Inky apunta a posición espejo relativa a Blinky
+- [ ] Clyde persigue cuando está lejos (>8 casillas), se mueve aleatoriamente cuando está cerca
+- [ ] Los 4 fantasmas renderizan con colores distintos (rojo, cyan, rosa, naranja)
+- [ ] Colisión con cualquier fantasma quita una vida, reinicia las 4 posiciones
+- [ ] Sin errores de consola; 60fps mantenidos en hardware típico
 
-## Decisions Taken and Discarded
+## Decisiones Tomadas y Descartadas
 
-- **Decision**: 4 classic behaviors from original Pac-Man. *Reason*: User explicitly requested Blinky/Pinky/Inky/Clyde.
-- **Decision**: A* every frame for Blinky. *Reason*: User chose "cada frame" for precision; maze is small (28x31), cost is negligible.
-- **Decision**: Fixed behavior per ghost, no mode switching. *Reason*: User chose "solo comportamiento fijo".
-- **Decision**: Dispersed starting positions. *Reason*: User chose "posiciones dispersas"; avoids all 4 stacking in pen.
-- **Discarded**: Chase/scatter timer. *Reason*: Out of scope per user.
-- **Discarded**: Power pellets / frightened mode. *Reason*: Out of scope per user.
+- **Decisión**: 4 comportamientos clásicos del Pac-Man original. *Razón*: El usuario pidió explícitamente Blinky/Pinky/Inky/Clyde.
+- **Decisión**: A* cada frame para Blinky. *Razón*: El usuario eligió "cada frame" para precisión; el laberinto es pequeño (28x31), el costo es insignificante.
+- **Decisión**: Comportamiento fijo por fantasma, sin cambio de modos. *Razón*: El usuario eligió "solo comportamiento fijo".
+- **Decisión**: Posiciones de inicio dispersas. *Razón*: El usuario eligió "posiciones dispersas"; evita que los 4 se apilen en la jaula.
+- **Descartado**: Temporizador de persecución/dispersión. *Razón*: Fuera de alcance según el usuario.
+- **Descartado**: Pellets de poder / modo asustado. *Razón*: Fuera de alcance según el usuario.
 
-## Identified Risks
+## Riesgos Identificados
 
-- **Performance**: A* every frame for 1 ghost on 28x31 grid is ~868 nodes worst case; trivial in JS but verify no frame drops.
-- **Inky dependency**: Inky needs Blinky's position to compute target; ensure Blinky is processed first in ghost loop.
-- **Tunnel handling in pathfinding**: A* must treat tunnel row as connected edges; verify wrap logic matches `wrapTunnel()`.
-- **Pinky's "4 tiles ahead" at maze edges**: Target may be in wall; clamp to nearest valid cell or fallback to Pac-Man position.
+- **Rendimiento**: A* cada frame para 1 fantasma en grilla 28x31 es ~868 nodos en peor caso; trivial en JS pero verificar que no haya caídas de frame.
+- **Dependencia de Inky**: Inky necesita la posición de Blinky para calcular objetivo; asegurar que Blinky se procese primero en el loop de fantasmas.
+- **Manejo de túnel en pathfinding**: A* debe tratar la fila del túnel como aristas conectadas; verificar que la lógica de wrap coincida con `wrapTunnel()`.
+- **"4 casillas adelante" de Pinky en bordes del laberinto**: El objetivo puede estar en una pared; recortar a la celda válida más cercana o caer de vuelta a la posición de Pac-Man.

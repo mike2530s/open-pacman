@@ -1,36 +1,36 @@
-# Spec 03 — Ghost Exit Fix + Faithful Maze
+# Spec 03 — Corrección de Salida de Fantasmas + Laberinto Fiel
 
-**State:** Implemented
-**Date:** 2026-10-02
-**Depends on:** SPEC 01, SPEC 02
-**Objective:** Replace the malformed `MAZE_STR` with the faithful 28x31 level-1 Pac-Man layout so ghosts can actually leave the pen and walls connect correctly, and fix ghost release/respawn so they exit the pen onto the map and eaten ghosts return as eyes instead of teleporting.
+**Estado:** Implementado
+**Fecha:** 2026-10-02
+**Depende de:** SPEC 01, SPEC 02
+**Objetivo:** Reemplazar el `MAZE_STR` malformado con el diseño fiel 28x31 del nivel 1 de Pac-Man para que los fantasmas puedan salir de la jaula y las paredes conecten correctamente; corregir la liberación/reaparición de fantasmas para que salgan por la puerta hacia el mapa y los fantasmas comidos regresen como ojos en lugar de teleportarse.
 
-## Scope
+## Alcance
 
-**In:**
-- Replace `MAZE_STR` in `maze.js` with the faithful 28x31 layout (all rows exactly 28 chars; rows 1 and 29 currently 26 chars, and the pen-surrounding corridor in row 11 is sealed)
-- Update `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS`, `POWER_PELLET_POSITIONS` to match the new maze:
+**Incluido:**
+- Reemplazar `MAZE_STR` en `maze.js` con el diseño fiel 28x31 (todas las filas exactamente 28 chars; filas 1 y 29 actualmente con 26 chars, y el corredor que rodea la jaula en la fila 11 está sellado)
+- Actualizar `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS`, `POWER_PELLET_POSITIONS` para coincidir con el nuevo laberinto:
   - `TUNNEL_ROW = 14`
-  - `PACMAN_START = { x: 13, y: 23 }` (row 23 uses ' ' for its cell)
-  - Blinky starts outside the pen above the door `{ x: 13, y: 11 }`; Pinky/Inky/Clyde inside pen `{ x: 12|13|14, y: 14 }` (cells ' ' / former 'G')
-  - Power pellets at the 4 arcade positions: `(1,3), (26,3), (1,23), (26,23)`
-- Pen interior cells become ' ' (0); doors stay '-' (3)
-- Ghost release: Blinky active from start; Pinky released after `PINKY_RELEASE` ms; Inky after `INKY_RELEASE` or N dots; Clyde after `CLYDE_RELEASE` or M dots. Until released, ghosts stay in pen moving up/down (original pen bounce) or idle
-- Fix eaten-ghost respawn: remove immediate `respawnTimer = RESPAWN_DELAY` on collision; eyes use existing A*/door pathfinding to pen, and `respawnTimer` only starts when eyes arrive at `PEN_CENTER`
-- Released ghosts pathfind through the door like normal ghosts (door passable for 'ghost'), so they walk out onto the map — no teleport
+  - `PACMAN_START = { x: 13, y: 23 }` (fila 23 usa ' ' para su celda)
+  - Blinky inicia fuera de la jaula sobre la puerta `{ x: 13, y: 11 }`; Pinky/Inky/Clyde dentro de la jaula `{ x: 12|13|14, y: 14 }` (celdas ' ' / antiguo 'G')
+  - Pellets de poder en las 4 posiciones arcade: `(1,3), (26,3), (1,23), (26,23)`
+- Celdas interiores de la jaula se vuelven ' ' (0); las puertas permanecen '-' (3)
+- Liberación de fantasmas: Blinky activo desde el inicio; Pinky liberado tras `PINKY_RELEASE` ms; Inky tras `INKY_RELEASE` o N puntos; Clyde tras `CLYDE_RELEASE` o M puntos. Hasta ser liberados, los fantasmas permanecen en la jaula moviéndose arriba/abajo (rebote original de jaula) o inactivos
+- Corrección de reaparición de fantasma comido: eliminar `respawnTimer = RESPAWN_DELAY` inmediato en colisión; los ojos usan pathfinding A*/puerta existente hacia la jaula, y `respawnTimer` solo inicia cuando los ojos llegan a `PEN_CENTER`
+- Los fantasmas liberados buscan ruta a través de la puerta como fantasmas normales (puerta accesible para 'ghost'), así caminan hacia el mapa — sin teleport
 
-**Not in:**
-- Scatter/chase mode timers
-- Pen-bounce attract animation (ghosts may idle instead)
-- Changes to frightened-mode scoring, power pellet logic, or wall rendering style (`drawWalls` already connects adjacent wall cells; only the data was broken)
+**No incluido:**
+- Temporizadores de modo dispersión/persecución
+- Animación de rebote de atracción en la jaula (los fantasmas pueden estar inactivos en su lugar)
+- Cambios a la puntuación de modo asustado, lógica de pellets de poder, o estilo de renderizado de paredes (`drawWalls` ya conecta celdas de pared adyacentes; solo los datos estaban rotos)
 
-## Data Model
+## Modelo de Datos
 
 ### `maze.js`
 ```js
 const MAZE_STR = [
-  // 31 rows x 28 chars, faithful level-1 layout (legend unchanged:
-  // '#'=1, '.'=2, ' '=0, '-'=3, 'o'=4), ghost house rows 13-15 cols 11-16 as ' '
+  // 31 filas x 28 chars, diseño fiel nivel 1 (leyenda sin cambios:
+  // '#'=1, '.'=2, ' '=0, '-'=3, 'o'=4), filas 13-15 cols 11-16 de la casa fantasma como ' '
 ];
 const TUNNEL_ROW = 14;
 const PACMAN_START = { x: 13, y: 23 };
@@ -45,51 +45,51 @@ const POWER_PELLET_POSITIONS = [
 ];
 ```
 
-### `game.js` constants
+### Constantes de `game.js`
 ```js
 const PINKY_RELEASE = 240;   // frames (~4s @60fps)
 const INKY_RELEASE_DOTS = 30;
 const CLYDE_RELEASE_DOTS = 60;
 ```
 
-### Ghost runtime additions
+### Adiciones al estado de ejecución del fantasma
 ```js
 ghosts: GHOST_STARTS.map(g => ({
-  // ...existing
-  released: g.kind === 'blinky', // blinky active from start
+  // ...existente
+  released: g.kind === 'blinky', // blinky activo desde el inicio
 })),
 ```
 
-## Implementation Plan
+## Plan de Implementación
 
-1. **Replace `MAZE_STR`** in `maze.js` with the faithful layout; sed-replace rows and assert every row is 28 chars at parse time (throw on mismatch).
-2. **Update maze constants**: `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS`, `POWER_PELLET_POSITIONS` as above.
-3. **Update `createGame()`**: add `released` flag (blinky true, others false); count dots/pellets from new grid.
-4. **Add release checks in `update()`**: before moving ghosts, release Pinky when frame counter or power ends; Inky/Clyde when `dotsEaten` reaches thresholds. Track `game.frame` counter.
-5. **Update `moveGhost()`**: if `!g.released`, keep ghost inside pen (idle or vertical bounce between rows 13-15) and skip decideGhost; once released, normal movement with `g.dir = 'up'` toward the door.
-6. **Fix eaten respawn**: in collision handler do NOT set `respawnTimer`; in `moveGhost` eaten branch, only set `respawnTimer = RESPAWN_DELAY` (and snap to `PEN_CENTER`) when eyes arrive at the pen center; remove `g.respawnTimer = RESPAWN_DELAY` from the collision block.
-7. **Sanity in `decideGhost()`**: when `!g.released`, skip A* targeting (pen movement only).
-8. **Verify**: reload browser; all 4 dots counters consistent; Pac-Man start cell empty.
+1. **Reemplazar `MAZE_STR`** en `maze.js` con el diseño fiel; reemplazar filas con sed y verificar que cada fila tenga 28 chars al parsear (lanzar error en caso contrario).
+2. **Actualizar constantes del laberinto**: `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS`, `POWER_PELLET_POSITIONS` como se indica arriba.
+3. **Actualizar `createGame()`**: agregar bandera `released` (blinky en true, otros en false); contar puntos/pellets desde la nueva grilla.
+4. **Agregar verificaciones de liberación en `update()`**: antes de mover fantasmas, liberar a Pinky cuando el contador de frames o el poder terminen; Inky/Clyde cuando `dotsEaten` alcance los umbrales. Rastrear contador `game.frame`.
+5. **Actualizar `moveGhost()`**: si `!g.released`, mantener al fantasma dentro de la jaula (inactivo o rebote vertical entre filas 13-15) y omitir decideGhost; una vez liberado, movimiento normal con `g.dir = 'up'` hacia la puerta.
+6. **Corregir reaparición comido**: en el manejador de colisión NO establecer `respawnTimer`; en la rama de eaten de `moveGhost`, solo establecer `respawnTimer = RESPAWN_DELAY` (y ajustar a `PEN_CENTER`) cuando los ojos lleguen al centro de la jaula; eliminar `g.respawnTimer = RESPAWN_DELAY` del bloque de colisión.
+7. **Sanidad en `decideGhost()`**: cuando `!g.released`, omitir targeting A* (solo movimiento de jaula).
+8. **Verificar**: recargar navegador; los 4 contadores de puntos son consistentes; la celda de inicio de Pac-Man está vacía.
 
-## Acceptance Criteria
+## Criterios de Aceptación
 
-- [ ] Every `MAZE_STR` row is exactly 28 characters (add a parse-time check)
-- [ ] Maze renders symmetric, walls continuous, tunnel row wraps both edges
-- [ ] Blinky moves immediately; Pinky/Inky/Clyde remain in pen until released, then walk up through the door onto the map (no teleport)
-- [ ] Eaten ghost's eyes travel from death point through walls-free path to pen, then ghost waits `RESPAWN_DELAY` and rejoins play
-- [ ] Power pellets appear at `(1,3),(26,3),(1,23),(26,23)` and trigger frightened mode
-- [ ] No console errors; 60fps maintained
+- [ ] Cada fila de `MAZE_STR` tiene exactamente 28 caracteres (agregar verificación en tiempo de parseo)
+- [ ] El laberinto se renderiza simétrico, paredes continuas, la fila del túnel envuelve ambos bordes
+- [ ] Blinky se mueve inmediatamente; Pinky/Inky/Clyde permanecen en la jaula hasta ser liberados, luego caminan por la puerta hacia el mapa (sin teleport)
+- [ ] Los ojos del fantasma comido viajan desde el punto de muerte por ruta libre de paredes hasta la jaula, luego el fantasma espera `RESPAWN_DELAY` y vuelve al juego
+- [ ] Los pellets de poder aparecen en `(1,3),(26,3),(1,23),(26,23)` y activan el modo asustado
+- [ ] Sin errores de consola; 60fps mantenidos
 
-## Decisions Taken and Discarded
+## Decisiones Tomadas y Descartadas
 
-- **Decision**: Faithful 28x31 maze (with correct row 11 corridor connectivity). *Reason*: Previous layout sealed the pen surroundings; ghosts had no route to the map.
-- **Decision**: Release via time (Pinky) + dot counts (Inky/Clyde). *Reason*: User chose "tiempo + contador de dots".
-- **Decision**: Blinky outside pen at door; rest inside. *Reason*: User chose this spawn split.
-- **Decision**: Door passable only for ghosts (unchanged). *Reason*: Matches original; Pac-Man still blocked.
-- **Discarded**: Pen side-to-side bounce animation; ghosts idle vertically instead. *Reason*: Keep visual change minimal; "paredes" fix was data-only.
+- **Decisión**: Laberinto fiel 28x31 (con conectividad correcta del corredor de la fila 11). *Razón*: El diseño anterior sellaba los alrededores de la jaula; los fantasmas no tenían ruta hacia el mapa.
+- **Decisión**: Liberación por tiempo (Pinky) + contadores de puntos (Inky/Clyde). *Razón*: El usuario eligió "tiempo + contador de dots".
+- **Decisión**: Blinky fuera de la jaula en la puerta; el resto adentro. *Razón*: El usuario eligió esta distribución de spawn.
+- **Decisión**: Puerta solo accesible para fantasmas (sin cambios). *Razón*: Coincide con el original; Pac-Man sigue bloqueado.
+- **Descartado**: Animación de rebote lateral en la jaula; los fantasmas están inactivos verticalmente en su lugar. *Razón*: Minimizar cambio visual; la corrección de "paredes" era solo de datos.
 
-## Identified Risks
+## Riesgos Identificados
 
-- **A* through door into pen**: chase A* may route ghosts back into the pen corridor; acceptable visually but verify ghosts don't oscillate at the door.
-- **Tunnel wrap in A* neighbors**: new layout's tunnel row must still wrap; verify `TUNNEL_ROW` unchanged (14).
-- **Row width regressions**: add the 28-char runtime check so future edits fail loudly.
+- **A* a través de la puerta hacia la jaula**: el A* de persecución puede enrutar fantasmas de vuelta al corredor de la jaula; aceptable visualmente pero verificar que los fantasmas no oscilen en la puerta.
+- **Wrap del túnel en vecinos A***: la fila del túnel del nuevo diseño aún debe envolver; verificar que `TUNNEL_ROW` no haya cambiado (14).
+- **Regresiones de ancho de fila**: agregar la verificación de runtime de 28 chars para que ediciones futuras fallen ruidosamente.
