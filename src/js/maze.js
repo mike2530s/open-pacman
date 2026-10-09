@@ -133,11 +133,25 @@ function setTile( x, y, v ) {
 // Inicio de Pacman (global, cerca del origen)
 const PACMAN_START = { x: 8, y: 8 };
 
+// Evict chunks lejanos al jugador para acotar memoria.
+// Descarta chunks con |dcx|>radius o |dcy|>radius respecto al chunk del jugador.
+function evictFarChunks( px, py, radius ) {
+  const pcx = Math.floor( px / CHUNK );
+  const pcy = Math.floor( py / CHUNK );
+  for ( const key of chunks.keys() ) {
+    const [ cx, cy ] = key.split( ',' ).map( Number );
+    if ( Math.abs( cx - pcx ) > radius || Math.abs( cy - pcy ) > radius ) {
+      chunks.delete( key );
+    }
+  }
+}
+
 window.CHUNK = CHUNK;
 window.WORLD_SEED = WORLD_SEED;
 window.chunks = chunks;
 window.chunkKey = chunkKey;
 window.generateChunk = generateChunk;
+window.evictFarChunks = evictFarChunks;
 window.getTile = getTile;
 window.setTile = setTile;
 window.PACMAN_START = PACMAN_START;
